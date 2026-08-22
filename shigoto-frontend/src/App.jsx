@@ -1,6 +1,12 @@
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
-import { AppBar, Toolbar, Button, Container, Typography, Box, Paper } from '@mui/material';
+import { useEffect } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Box } from '@mui/material';
+import PublicHeader from './components/PublicHeader';
+import PublicFooter from './components/PublicFooter';
+import DashboardShell from './components/DashboardShell';
 import Home from './pages/Home';
+import AboutUs from './pages/AboutUs';
+import ContactUs from './pages/ContactUs';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import CandidateDashboard from './pages/CandidateDashboard';
@@ -13,60 +19,77 @@ import InterviewerDashboard from './pages/InterviewerDashboard';
 import InterviewDetails from './pages/InterviewDetails';
 import InterviewFeedback from './pages/InterviewFeedback';
 
-const developmentLinks = [
-  { label: 'Jobs', to: '/' },
-  { label: 'Login', to: '/login' },
-  { label: 'Register', to: '/register' },
-  { label: 'Candidate Dashboard', to: '/candidate' },
-  { label: 'Apply', to: '/candidate/applications/new' },
-  { label: 'Application Details', to: '/candidate/applications/demo' },
-  { label: 'HR Kanban', to: '/hr' },
-  { label: 'Job Management', to: '/hr/jobs' },
-  { label: 'Candidate Details', to: '/hr/candidates/demo' },
-  { label: 'My Interviews', to: '/interviewer' },
-  { label: 'Interview Details', to: '/interviewer/interviews/demo' },
-  { label: 'Feedback', to: '/interviewer/interviews/demo/feedback' },
-];
+const publicPaths = ['/', '/jobs', '/about', '/contact', '/login', '/register'];
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="/jobs" element={<Navigate to="/#jobs" replace />} />
+      <Route path="/about" element={<AboutUs />} />
+      <Route path="/contact" element={<ContactUs />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/candidate" element={<CandidateDashboard />} />
+      <Route path="/candidate/applications/new" element={<ApplicationForm />} />
+      <Route path="/candidate/applications/:applicationId" element={<CandidateApplicationDetails />} />
+      <Route path="/hr" element={<HrDashboard />} />
+      <Route path="/hr/jobs" element={<JobManagement />} />
+      <Route path="/hr/candidates/:candidateId" element={<CandidateDetails />} />
+      <Route path="/interviewer" element={<InterviewerDashboard />} />
+      <Route path="/interviewer/interviews/:interviewId" element={<InterviewDetails />} />
+      <Route path="/interviewer/interviews/:interviewId/feedback" element={<InterviewFeedback />} />
+    </Routes>
+  );
+}
+
+function NavigationScrollManager() {
+  const { pathname, hash } = useLocation();
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      if (hash === '#jobs') {
+        document.getElementById('jobs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [pathname, hash]);
+
+  return null;
+}
+
+function AppLayout() {
+  const { pathname } = useLocation();
+  const isPublicPage = publicPaths.includes(pathname);
+
+  if (!isPublicPage) {
+    return (
+      <DashboardShell>
+        <AppRoutes />
+      </DashboardShell>
+    );
+  }
+
+  return (
+    <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: 'background.default' }}>
+      <PublicHeader />
+      <Box component="main" sx={{ flex: 1 }}>
+        <AppRoutes />
+      </Box>
+      <PublicFooter />
+    </Box>
+  );
+}
 
 function App() {
   return (
     <BrowserRouter>
-      <AppBar position="static">
-        <Toolbar>
-          <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 'bold', textAlign: 'left' }}>
-            Shigoto ATS
-          </Typography>
-          <Button color="inherit" component={Link} to="/">Open Jobs</Button>
-          <Button color="inherit" component={Link} to="/login">Login</Button>
-        </Toolbar>
-      </AppBar>
-
-      <Paper component="nav" square variant="outlined" aria-label="Development navigation">
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 0.5, p: 1 }}>
-          {developmentLinks.map((link) => (
-            <Button key={link.to} size="small" component={Link} to={link.to}>
-              {link.label}
-            </Button>
-          ))}
-        </Box>
-      </Paper>
-
-      <Container component="main" maxWidth="lg" sx={{ pb: 6 }}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/candidate" element={<CandidateDashboard />} />
-          <Route path="/candidate/applications/new" element={<ApplicationForm />} />
-          <Route path="/candidate/applications/:applicationId" element={<CandidateApplicationDetails />} />
-          <Route path="/hr" element={<HrDashboard />} />
-          <Route path="/hr/jobs" element={<JobManagement />} />
-          <Route path="/hr/candidates/:candidateId" element={<CandidateDetails />} />
-          <Route path="/interviewer" element={<InterviewerDashboard />} />
-          <Route path="/interviewer/interviews/:interviewId" element={<InterviewDetails />} />
-          <Route path="/interviewer/interviews/:interviewId/feedback" element={<InterviewFeedback />} />
-        </Routes>
-      </Container>
+      <NavigationScrollManager />
+      <AppLayout />
     </BrowserRouter>
   );
 }
