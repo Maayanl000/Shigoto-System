@@ -7,22 +7,10 @@ import WorkOutlineRoundedIcon from '@mui/icons-material/WorkOutlineRounded';
 import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined';
 import PageSkeleton from '../components/PageSkeleton';
 import api from '../services/api';
+import { getApplicationStatusDisplay, recruitmentStages } from '../utils/applicationStatus';
 
 // TODO: Replace this development ID with the authenticated current user's ID when authentication is implemented.
 const DEVELOPMENT_CANDIDATE_ID = 2;
-
-const recruitmentStages = ['Applied', 'Review', 'Task', 'Interview', 'Decision'];
-
-const statusDisplay = {
-  APPLIED: { label: 'Applied', progressStage: 1, color: 'secondary' },
-  HR_INTERVIEW: { label: 'HR interview', progressStage: 2, color: 'secondary' },
-  TASK_SENT: { label: 'Task sent', progressStage: 3, color: 'secondary' },
-  TASK_SUBMITTED: { label: 'Task submitted', progressStage: 3, color: 'secondary' },
-  TASK_APPROVED: { label: 'Task approved', progressStage: 3, color: 'secondary' },
-  TECH_INTERVIEW_SCHEDULED: { label: 'Technical interview scheduled', progressStage: 4, color: 'secondary' },
-  OFFER: { label: 'Offer', progressStage: 5, color: 'success' },
-  REJECTED: { label: 'Rejected', progressStage: 5, color: 'error' },
-};
 
 const inactiveStatuses = new Set(['REJECTED', 'OFFER']);
 
@@ -102,7 +90,7 @@ export default function CandidateDashboard() {
             )}
 
             {!loading && !loadError && applications.map((application) => {
-              const display = statusDisplay[application.status] || { label: application.status, progressStage: 1, color: 'default' };
+              const display = getApplicationStatusDisplay(application.status);
               const jobContext = [application.companyName, application.location].filter(Boolean).join(' · ');
 
               return (

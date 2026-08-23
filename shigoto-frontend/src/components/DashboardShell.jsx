@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { AppBar, Avatar, Box, Button, Chip, Divider, Drawer, IconButton, List, ListItemButton, ListItemIcon, ListItemText, Stack, Toolbar, Tooltip, Typography } from '@mui/material';
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined';
-import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
 import ViewKanbanOutlinedIcon from '@mui/icons-material/ViewKanbanOutlined';
 import WorkOutlineRoundedIcon from '@mui/icons-material/WorkOutlineRounded';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
@@ -23,7 +22,6 @@ const areaConfig = {
     links: [
       { label: 'Overview', to: '/candidate', icon: <DashboardOutlinedIcon /> },
       { label: 'Browse jobs', to: '/jobs', icon: <WorkOutlineRoundedIcon /> },
-      { label: 'Application details', to: '/candidate/applications/demo', icon: <AssignmentOutlinedIcon /> },
     ],
   },
   hr: {
