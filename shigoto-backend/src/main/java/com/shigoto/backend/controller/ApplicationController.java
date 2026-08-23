@@ -1,6 +1,7 @@
 package com.shigoto.backend.controller;
 
 import com.shigoto.backend.dto.ApplicationResponseDTO;
+import com.shigoto.backend.dto.TaskSubmissionRequestDTO;
 import com.shigoto.backend.entity.Application;
 import com.shigoto.backend.entity.ApplicationStatus; // ה-import הנקי של הסטטוס
 import com.shigoto.backend.service.ApplicationService;
@@ -57,6 +58,17 @@ public class ApplicationController {
     public ResponseEntity<ApplicationResponseDTO> getApplicationById(
             @PathVariable Long applicationId) {
         return ResponseEntity.ok(applicationService.getApplicationById(applicationId));
+    }
+
+    @PutMapping("/{applicationId}/task-submission")
+    public ResponseEntity<ApplicationResponseDTO> submitTask(
+            @PathVariable Long applicationId,
+            @RequestBody TaskSubmissionRequestDTO request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Repository URL is required");
+        }
+        return ResponseEntity.ok(
+                applicationService.submitTask(applicationId, request.repositoryUrl()));
     }
 
     // נקודת קצה (Endpoint) חדשה לעדכון מועמדות לפי ה-ID שלה

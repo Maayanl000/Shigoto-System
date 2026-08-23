@@ -14,6 +14,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 
 @Service
@@ -114,6 +118,61 @@ public class ApplicationService {
 
         // TODO: Verify that this application belongs to the authenticated Candidate once authentication is implemented.
         return toResponseDTO(application);
+    }
+
+    public ApplicationResponseDTO submitTask(Long applicationId, String repositoryUrl) {
+        Application application = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Application not found with id: " + applicationId));
+
+        // TODO: Verify that this application belongs to the authenticated Candidate once authentication is implemented.
+        if (application.getStatus() == ApplicationStatus.TASK_SUBMITTED) {
+            throw new IllegalArgumentException("Technical task has already been submitted");
+        }
+        if (application.getStatus() != ApplicationStatus.TASK_SENT) {
+            throw new IllegalArgumentException("Application status does not allow technical task submission");
+        }
+        if (application.getTaskDeadline() == null) {
+            throw new IllegalArgumentException("Technical task has no assigned deadline");
+        }
+
+        LocalDateTime serverTime = LocalDateTime.now();
+        if (!application.getTaskDeadline().isAfter(serverTime)) {
+            throw new IllegalArgumentException("Technical task deadline has passed");
+        }
+
+        String normalizedRepositoryUrl = validateRepositoryUrl(repositoryUrl);
+        application.setTaskRepoUrl(normalizedRepositoryUrl);
+        application.setStatus(ApplicationStatus.TASK_SUBMITTED);
+
+        return toResponseDTO(applicationRepository.save(application));
+    }
+
+    private String validateRepositoryUrl(String repositoryUrl) {
+        if (repositoryUrl == null || repositoryUrl.isBlank()) {
+            throw new IllegalArgumentException("Repository URL is required");
+        }
+
+        String trimmedUrl = repositoryUrl.trim();
+        try {
+            URI uri = new URI(trimmedUrl);
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            boolean validScheme = "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
+            boolean validHost = "github.com".equalsIgnoreCase(host)
+                    || "www.github.com".equalsIgnoreCase(host);
+            long pathSegments = Arrays.stream(uri.getPath().split("/"))
+                    .filter(segment -> !segment.isBlank())
+                    .count();
+
+            if (!validScheme || !validHost || pathSegments < 2) {
+                throw new IllegalArgumentException(
+                        "Repository URL must be a valid GitHub repository URL in the form /owner/repository");
+            }
+            return trimmedUrl;
+        } catch (URISyntaxException ex) {
+            throw new IllegalArgumentException("Repository URL is malformed");
+        }
     }
 
     private ApplicationResponseDTO toResponseDTO(Application application) {
