@@ -10,7 +10,7 @@ import java.util.List;
 public interface ApplicationRepository extends JpaRepository<Application, Long> {
 
     // שאילתת עזר שנצטרך בעתיד: למצוא את כל המועמדויות של מועמד ספציפי לפי ה-ID שלו
-    List<Application> findByCandidateId(Long candidateId);
+    List<Application> findByCandidateIdOrderByAppliedAtDesc(Long candidateId);
 
     // שאילתת עזר: למצוא את כל המועמדויות ששייכות למשרה ספציפית
     List<Application> findByJobId(Long jobId);

@@ -47,6 +47,12 @@ public class ApplicationController {
         return ResponseEntity.ok(applicationService.getAllApplications());
     }
 
+    @GetMapping("/candidate/{candidateId}")
+    public ResponseEntity<List<ApplicationResponseDTO>> getApplicationsByCandidate(
+            @PathVariable Long candidateId) {
+        return ResponseEntity.ok(applicationService.getApplicationsByCandidate(candidateId));
+    }
+
     // נקודת קצה (Endpoint) חדשה לעדכון מועמדות לפי ה-ID שלה
     @PutMapping("/{id}")
     public ResponseEntity<Application> updateApplication(

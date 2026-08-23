@@ -89,14 +89,38 @@ public class ApplicationService {
     public List<ApplicationResponseDTO> getAllApplications() {
         return applicationRepository.findAll()
                 .stream()
-                .map(app -> new ApplicationResponseDTO(
-                        app.getId(),
-                        app.getCandidate().getId(), // משיכת ה-ID של המועמד
-                        app.getJob().getId(),       // משיכת ה-ID של המשרה
-                        app.getCoverLetter(),
-                        app.getStatus(),
-                        app.getAppliedAt()
-                ))
+                .map(this::toResponseDTO)
                 .toList();
+    }
+
+    public List<ApplicationResponseDTO> getApplicationsByCandidate(Long candidateId) {
+        var candidate = userRepository.findById(candidateId)
+                .orElseThrow(() -> new ResourceNotFoundException("Candidate not found with id: " + candidateId));
+
+        if (candidate.getRole() != Role.CANDIDATE) {
+            throw new IllegalArgumentException("Referenced user is not a candidate");
+        }
+
+        return applicationRepository.findByCandidateIdOrderByAppliedAtDesc(candidateId)
+                .stream()
+                .map(this::toResponseDTO)
+                .toList();
+    }
+
+    private ApplicationResponseDTO toResponseDTO(Application application) {
+        var job = application.getJob();
+        return new ApplicationResponseDTO(
+                application.getId(),
+                application.getCandidate().getId(),
+                job.getId(),
+                job.getTitle(),
+                job.getCompany().getName(),
+                job.getLocation(),
+                application.getCoverLetter(),
+                application.getStatus(),
+                application.getAppliedAt(),
+                application.getTaskDeadline(),
+                application.getTaskRepoUrl()
+        );
     }
 }

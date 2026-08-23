@@ -7,7 +7,12 @@ public record ApplicationResponseDTO(
         Long id,
         Long candidateId,
         Long jobId,
+        String jobTitle,
+        String companyName,
+        String location,
         String coverLetter,
         ApplicationStatus status,
-        LocalDateTime appliedAt
+        LocalDateTime appliedAt,
+        LocalDateTime taskDeadline,
+        String taskRepoUrl
 ) {}
