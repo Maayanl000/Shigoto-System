@@ -107,6 +107,15 @@ public class ApplicationService {
                 .toList();
     }
 
+    public ApplicationResponseDTO getApplicationById(Long applicationId) {
+        var application = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Application not found with id: " + applicationId));
+
+        // TODO: Verify that this application belongs to the authenticated Candidate once authentication is implemented.
+        return toResponseDTO(application);
+    }
+
     private ApplicationResponseDTO toResponseDTO(Application application) {
         var job = application.getJob();
         return new ApplicationResponseDTO(
