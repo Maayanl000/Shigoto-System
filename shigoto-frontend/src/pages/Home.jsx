@@ -27,9 +27,9 @@ export default function Home() {
         console.error('Error fetching jobs:', error);
         // נתוני גיבוי (Fallback) למקרה ששרת ה-Java כרגע כבוי
         setJobs([
-          { id: 1, title: 'Full Stack Java Developer', department: 'R&D', location: 'Tel Aviv', type: 'Full-time' },
-          { id: 2, title: 'Backend Engineer (Spring Boot)', department: 'Engineering', location: 'Hybrid', type: 'Full-time' },
-          { id: 3, title: 'Frontend Developer (React)', department: 'UI/UX', location: 'Remote', type: 'Full-time' },
+          { id: 1, title: 'Full Stack Java Developer', department: 'R&D', location: 'Tel Aviv', type: 'Full-time', isFallback: true },
+          { id: 2, title: 'Backend Engineer (Spring Boot)', department: 'Engineering', location: 'Hybrid', type: 'Full-time', isFallback: true },
+          { id: 3, title: 'Frontend Developer (React)', department: 'UI/UX', location: 'Remote', type: 'Full-time', isFallback: true },
         ]);
         setLoading(false);
       });

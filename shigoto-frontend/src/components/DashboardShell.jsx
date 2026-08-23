@@ -22,6 +22,7 @@ const areaConfig = {
     initials: 'CA',
     links: [
       { label: 'Overview', to: '/candidate', icon: <DashboardOutlinedIcon /> },
+      { label: 'Browse jobs', to: '/jobs', icon: <WorkOutlineRoundedIcon /> },
       { label: 'Application details', to: '/candidate/applications/demo', icon: <AssignmentOutlinedIcon /> },
     ],
   },

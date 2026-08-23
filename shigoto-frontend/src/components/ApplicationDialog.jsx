@@ -2,6 +2,10 @@ import { useRef, useState } from 'react';
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Divider, FormHelperText, Grid, IconButton, Stack, TextField, Typography } from '@mui/material';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
+import api from '../services/api';
+
+// TODO: Replace this development ID with the authenticated current user's ID when authentication is implemented.
+const DEVELOPMENT_CANDIDATE_ID = 2;
 
 const initialFormValues = {
   fullName: '',
@@ -38,7 +42,8 @@ export default function ApplicationDialog({ open, onClose, job }) {
   const [values, setValues] = useState(initialFormValues);
   const [cvFile, setCvFile] = useState(null);
   const [touched, setTouched] = useState({});
-  const [submitted, setSubmitted] = useState(false);
+  const [submissionStatus, setSubmissionStatus] = useState('idle');
+  const [submissionError, setSubmissionError] = useState('');
   const fileInputRef = useRef(null);
 
   const errors = {
@@ -48,10 +53,18 @@ export default function ApplicationDialog({ open, onClose, job }) {
     cv: !cvFile ? 'A CV in PDF format is required.' : isPdf(cvFile) ? '' : 'Select a PDF file only.',
   };
   const isFormValid = Object.values(errors).every((error) => !error);
+  const canSubmitJob = Boolean(job?.id) && !job?.isFallback;
+  const isSubmitting = submissionStatus === 'submitting';
+  const isSuccessful = submissionStatus === 'success';
+
+  const clearSubmissionFeedback = () => {
+    setSubmissionStatus('idle');
+    setSubmissionError('');
+  };
 
   const handleChange = (field) => (event) => {
     setValues((current) => ({ ...current, [field]: event.target.value }));
-    setSubmitted(false);
+    clearSubmissionFeedback();
   };
 
   const handleBlur = (field) => () => {
@@ -61,14 +74,14 @@ export default function ApplicationDialog({ open, onClose, job }) {
   const handleFileChange = (event) => {
     setCvFile(event.target.files?.[0] || null);
     setTouched((current) => ({ ...current, cv: true }));
-    setSubmitted(false);
+    clearSubmissionFeedback();
   };
 
   const resetForm = () => {
     setValues(initialFormValues);
     setCvFile(null);
     setTouched({});
-    setSubmitted(false);
+    clearSubmissionFeedback();
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -77,14 +90,38 @@ export default function ApplicationDialog({ open, onClose, job }) {
     onClose();
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     setTouched({ fullName: true, email: true, githubUrl: true, cv: true });
-    if (isFormValid) setSubmitted(true);
+    if (!isFormValid || !canSubmitJob || isSubmitting) return;
+
+    setSubmissionStatus('submitting');
+    setSubmissionError('');
+
+    try {
+      await api.post('/applications', {
+        candidateId: DEVELOPMENT_CANDIDATE_ID,
+        jobId: job.id,
+        // TODO: Replace null with the stored CV URL when CV upload and storage are implemented.
+        cvUrl: null,
+        coverLetter: values.coverNote,
+      });
+      setSubmissionStatus('success');
+    } catch (error) {
+      if (error.response?.status === 409) {
+        setSubmissionError('You have already applied for this position.');
+      } else {
+        const backendMessage = error.response?.data?.message;
+        setSubmissionError(typeof backendMessage === 'string' && backendMessage.trim()
+          ? backendMessage
+          : 'We could not submit your application. Please try again.');
+      }
+      setSubmissionStatus('error');
+    }
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} fullWidth maxWidth="md">
+    <Dialog open={open} onClose={isSubmitting ? undefined : handleClose} fullWidth maxWidth="md">
       <Box component="form" noValidate onSubmit={handleSubmit}>
         <DialogTitle component="div">
           <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
@@ -93,13 +130,15 @@ export default function ApplicationDialog({ open, onClose, job }) {
               <Typography variant="h6">{job?.title || 'Selected position'}</Typography>
               <Typography variant="body2" color="text.secondary">{job?.location || 'Location pending'} · {job?.type || 'Full-time'}</Typography>
             </div>
-            <IconButton aria-label="Close application dialog" onClick={handleClose} size="small"><CloseRoundedIcon /></IconButton>
+            <IconButton aria-label="Close application dialog" onClick={handleClose} disabled={isSubmitting} size="small"><CloseRoundedIcon /></IconButton>
           </Stack>
         </DialogTitle>
         <Divider />
         <DialogContent sx={{ display: 'grid', gap: 2.5, pt: 3 }}>
-          <Alert severity="info" icon={false}>Preview mode: this form validates locally, but submission does not create an application.</Alert>
-          {submitted && <Alert severity="success">Application preview completed. No application was sent.</Alert>}
+          <Alert severity="info" icon={false}>Development mode: applications use candidate ID 2, and the selected CV is not uploaded yet.</Alert>
+          {!canSubmitJob && <Alert severity="warning">This preview job is not connected to the backend and cannot accept applications.</Alert>}
+          {submissionStatus === 'success' && <Alert severity="success">Your application was submitted successfully.</Alert>}
+          {submissionStatus === 'error' && <Alert severity="error">{submissionError}</Alert>}
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 6 }}>
               <TextField
@@ -110,6 +149,7 @@ export default function ApplicationDialog({ open, onClose, job }) {
                 error={touched.fullName && Boolean(errors.fullName)}
                 helperText={touched.fullName ? errors.fullName : ' '}
                 required
+                disabled={isSuccessful}
                 autoComplete="name"
                 fullWidth
               />
@@ -124,6 +164,7 @@ export default function ApplicationDialog({ open, onClose, job }) {
                 error={touched.email && Boolean(errors.email)}
                 helperText={touched.email ? errors.email : ' '}
                 required
+                disabled={isSuccessful}
                 autoComplete="email"
                 fullWidth
               />
@@ -139,6 +180,7 @@ export default function ApplicationDialog({ open, onClose, job }) {
             error={touched.githubUrl && Boolean(errors.githubUrl)}
             helperText={touched.githubUrl ? errors.githubUrl : 'Use your public GitHub profile URL.'}
             required
+            disabled={isSuccessful}
             autoComplete="url"
             fullWidth
           />
@@ -148,15 +190,16 @@ export default function ApplicationDialog({ open, onClose, job }) {
             onChange={handleChange('coverNote')}
             multiline
             minRows={4}
+            disabled={isSuccessful}
             fullWidth
           />
           <Box sx={{ p: 2.5, border: 1, borderStyle: 'dashed', borderColor: touched.cv && errors.cv ? 'error.main' : 'divider', borderRadius: 2, bgcolor: 'background.default' }}>
             <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={2}>
               <Box>
                 <Typography variant="body2" fontWeight={800}>CV / resume</Typography>
-                <Typography variant="caption" color="text.secondary">Upload one PDF file for this application preview.</Typography>
+                <Typography variant="caption" color="text.secondary">Select one PDF file. Upload will be added separately.</Typography>
               </Box>
-              <Button component="label" variant="outlined" startIcon={<UploadFileOutlinedIcon />}>
+              <Button component="label" variant="outlined" startIcon={<UploadFileOutlinedIcon />} disabled={isSuccessful}>
                 Choose PDF
                 <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" hidden onChange={handleFileChange} />
               </Button>
@@ -166,8 +209,16 @@ export default function ApplicationDialog({ open, onClose, job }) {
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2.5 }}>
-          <Button type="button" onClick={handleClose} color="inherit">Cancel</Button>
-          <Button type="submit" variant="contained" disabled={!isFormValid}>Submit application</Button>
+          {isSuccessful ? (
+            <Button type="button" onClick={handleClose} variant="contained">Close</Button>
+          ) : (
+            <>
+              <Button type="button" onClick={handleClose} color="inherit" disabled={isSubmitting}>Cancel</Button>
+              <Button type="submit" variant="contained" disabled={!isFormValid || !canSubmitJob || isSubmitting}>
+                {isSubmitting ? 'Submitting…' : 'Submit application'}
+              </Button>
+            </>
+          )}
         </DialogActions>
       </Box>
     </Dialog>

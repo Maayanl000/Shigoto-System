@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Avatar, Box, Button, Card, CardContent, Chip, Grid, LinearProgress, Stack, Typography } from '@mui/material';
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded';
@@ -6,7 +5,6 @@ import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
 import WorkOutlineRoundedIcon from '@mui/icons-material/WorkOutlineRounded';
 import ScheduleOutlinedIcon from '@mui/icons-material/ScheduleOutlined';
 import PageSkeleton from '../components/PageSkeleton';
-import ApplicationDialog from '../components/ApplicationDialog';
 
 // Local frontend-only data used to communicate the planned candidate experience.
 const mockApplication = {
@@ -18,8 +16,6 @@ const mockApplication = {
 };
 
 export default function CandidateDashboard() {
-  const [applyOpen, setApplyOpen] = useState(false);
-
   return (
     <PageSkeleton title="Candidate Dashboard" description="Track active applications, current recruitment status, and pending tasks.">
       <Grid container spacing={2.5}>
@@ -91,13 +87,12 @@ export default function CandidateDashboard() {
         <Grid size={12}>
           <Card>
             <CardContent sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { sm: 'center' }, justifyContent: 'space-between', gap: 2 }}>
-              <Box><Typography variant="h6">Explore another opportunity</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Open the candidate application dialog using local preview job data.</Typography></Box>
-              <Button variant="contained" onClick={() => setApplyOpen(true)}>Apply to a role</Button>
+              <Box><Typography variant="h6">Explore another opportunity</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Browse current backend jobs and apply to a real open position.</Typography></Box>
+              <Button component={Link} to="/jobs" variant="contained">Apply to a role</Button>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
-      <ApplicationDialog open={applyOpen} onClose={() => setApplyOpen(false)} job={mockApplication} />
     </PageSkeleton>
   );
 }
