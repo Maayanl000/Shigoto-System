@@ -24,5 +24,24 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponseDTO> handleBadRequest(IllegalArgumentException ex) {
+        return buildErrorResponse(ex.getMessage(), HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(DuplicateApplicationException.class)
+    public ResponseEntity<ErrorResponseDTO> handleConflict(DuplicateApplicationException ex) {
+        return buildErrorResponse(ex.getMessage(), HttpStatus.CONFLICT);
+    }
+
+    private ResponseEntity<ErrorResponseDTO> buildErrorResponse(String message, HttpStatus status) {
+        ErrorResponseDTO errorResponse = new ErrorResponseDTO(
+                message,
+                status.value(),
+                LocalDateTime.now()
+        );
+        return ResponseEntity.status(status).body(errorResponse);
+    }
+
     // אפשר להוסיף כאן בעתיד עוד פונקציות שיתפסו שגיאות אחרות!
 }

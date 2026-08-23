@@ -25,6 +25,13 @@ public class ApplicationController {
 
     @PostMapping
     public ResponseEntity<Application> createApplication(@RequestBody ApplicationRequest request) {
+        if (request.candidateId() == null) {
+            throw new IllegalArgumentException("candidateId must not be null");
+        }
+        if (request.jobId() == null) {
+            throw new IllegalArgumentException("jobId must not be null");
+        }
+
         Application savedApplication = applicationService.createApplication(
                 request.candidateId(),
                 request.jobId(),

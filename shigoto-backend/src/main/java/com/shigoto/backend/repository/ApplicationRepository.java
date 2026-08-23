@@ -14,4 +14,6 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
 
     // שאילתת עזר: למצוא את כל המועמדויות ששייכות למשרה ספציפית
     List<Application> findByJobId(Long jobId);
+
+    boolean existsByCandidateIdAndJobId(Long candidateId, Long jobId);
 }
