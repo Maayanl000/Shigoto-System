@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Grid, LinearProgress, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Grid, LinearProgress, Stack, TextField, Typography } from '@mui/material';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
@@ -19,12 +19,35 @@ function formatDateTime(value) {
     : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 
+function validateRepositoryUrl(value) {
+  if (!value.trim()) return 'GitHub Repository URL is required.';
+
+  try {
+    const url = new URL(value.trim());
+    const hasValidProtocol = url.protocol === 'http:' || url.protocol === 'https:';
+    const hasValidHost = url.hostname === 'github.com' || url.hostname === 'www.github.com';
+    const pathSegments = url.pathname.split('/').filter(Boolean);
+
+    return hasValidProtocol && hasValidHost && pathSegments.length >= 2
+      ? null
+      : 'Enter a GitHub repository URL in the form https://github.com/owner/repository.';
+  } catch {
+    return 'Enter a valid GitHub repository URL.';
+  }
+}
+
 export default function CandidateApplicationDetails() {
   const { applicationId } = useParams();
   const [application, setApplication] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [loadedApplicationId, setLoadedApplicationId] = useState(null);
+  const [repositoryUrl, setRepositoryUrl] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [validationError, setValidationError] = useState(null);
+  const [submissionError, setSubmissionError] = useState(null);
+  const [submissionSuccess, setSubmissionSuccess] = useState(false);
+  const [taskDeadlineExpired, setTaskDeadlineExpired] = useState(false);
 
   useEffect(() => {
     let isCurrent = true;
@@ -34,6 +57,14 @@ export default function CandidateApplicationDetails() {
         if (!isCurrent) return;
         setApplication(response.data);
         setLoadError(null);
+        setRepositoryUrl('');
+        setValidationError(null);
+        setSubmissionError(null);
+        setSubmissionSuccess(false);
+        const deadline = response.data.taskDeadline ? new Date(response.data.taskDeadline) : null;
+        setTaskDeadlineExpired(
+          Boolean(deadline) && !Number.isNaN(deadline.getTime()) && deadline.getTime() <= Date.now(),
+        );
       })
       .catch((error) => {
         if (!isCurrent) return;
@@ -53,13 +84,54 @@ export default function CandidateApplicationDetails() {
 
   const isLoading = loading || loadedApplicationId !== applicationId;
   const status = application ? getApplicationStatusDisplay(application.status) : null;
-  const hasTask = application && (Boolean(application.taskDeadline) || taskStatuses.has(application.status));
+  const isTaskSubmitted = application && (
+    application.status === 'TASK_SUBMITTED' || Boolean(application.taskRepoUrl)
+  );
+  const hasTask = application && (
+    Boolean(application.taskDeadline) || taskStatuses.has(application.status) || isTaskSubmitted
+  );
+  const taskDeadlineDate = application?.taskDeadline ? new Date(application.taskDeadline) : null;
+  const hasValidTaskDeadline = taskDeadlineDate && !Number.isNaN(taskDeadlineDate.getTime());
+  const canSubmitTask = application?.status === 'TASK_SENT'
+    && hasValidTaskDeadline
+    && !taskDeadlineExpired
+    && !isTaskSubmitted;
   const hasInterviewStage = application && interviewStatuses.has(application.status);
   const appliedAt = formatDateTime(application?.appliedAt);
   const taskDeadline = formatDateTime(application?.taskDeadline);
   const jobContext = application
     ? [application.companyName, application.location].filter(Boolean).join(' · ')
     : '';
+
+  const handleTaskSubmission = async (event) => {
+    event.preventDefault();
+    if (submitting || !canSubmitTask) return;
+
+    const nextValidationError = validateRepositoryUrl(repositoryUrl);
+    setValidationError(nextValidationError);
+    setSubmissionError(null);
+    setSubmissionSuccess(false);
+    if (nextValidationError) return;
+
+    setSubmitting(true);
+    try {
+      const response = await api.put(`/applications/${application.id}/task-submission`, {
+        repositoryUrl: repositoryUrl.trim(),
+      });
+      setApplication(response.data);
+      setRepositoryUrl('');
+      setSubmissionSuccess(true);
+    } catch (error) {
+      const backendMessage = error.response?.data?.message;
+      setSubmissionError(
+        typeof backendMessage === 'string' && backendMessage.trim()
+          ? backendMessage
+          : 'We could not submit the task. Please try again later.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <PageSkeleton title="Application Details" description="Follow one application, its current recruitment stage, and assigned tasks.">
@@ -114,17 +186,44 @@ export default function CandidateApplicationDetails() {
                   <Stack direction="row" justifyContent="space-between" alignItems="center"><Stack direction="row" spacing={1} alignItems="center"><AssignmentOutlinedIcon color="secondary" /><Typography variant="h6">Technical home task</Typography></Stack><Chip label={hasTask ? 'Task stage' : 'Not assigned'} size="small" variant="outlined" /></Stack>
                   {!hasTask ? (
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 2, lineHeight: 1.75 }}>No technical task has been assigned yet.</Typography>
-                  ) : (
+                  ) : isTaskSubmitted ? (
                     <Stack spacing={1.5} sx={{ mt: 2 }}>
                       <Typography variant="body2"><strong>Deadline:</strong> {taskDeadline || 'Deadline not available'}</Typography>
-                      {application.taskRepoUrl ? (
-                        <Box><Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>A repository submission is available.</Typography><Button component="a" href={application.taskRepoUrl} target="_blank" rel="noreferrer" variant="outlined">Open submitted repository</Button></Box>
+                      {submissionSuccess && <Alert severity="success">Technical task submitted successfully.</Alert>}
+                      <Typography variant="body2" fontWeight={700}>Task submitted</Typography>
+                      {application.taskRepoUrl && <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>{application.taskRepoUrl}</Typography>}
+                      {application.taskRepoUrl && <Box><Button component="a" href={application.taskRepoUrl} target="_blank" rel="noreferrer" variant="outlined">Open submitted repository</Button></Box>}
+                    </Stack>
+                  ) : application.status === 'TASK_SENT' && application.taskDeadline ? (
+                    <Stack spacing={1.5} sx={{ mt: 2 }}>
+                      <Typography variant="body2"><strong>Deadline:</strong> {taskDeadline || 'Deadline unavailable'}</Typography>
+                      {taskDeadlineExpired ? (
+                        <Alert severity="warning">The submission deadline has passed. Task submission is disabled.</Alert>
                       ) : (
-                        <Typography variant="body2" color="text.secondary">No repository submission has been made.</Typography>
+                        <Box component="form" onSubmit={handleTaskSubmission} noValidate>
+                          <Stack spacing={1.5}>
+                            <TextField
+                              label="GitHub Repository URL"
+                              value={repositoryUrl}
+                              onChange={(event) => {
+                                setRepositoryUrl(event.target.value);
+                                setValidationError(null);
+                                setSubmissionError(null);
+                              }}
+                              error={Boolean(validationError)}
+                              helperText={validationError || 'Use https://github.com/owner/repository'}
+                              disabled={submitting || !canSubmitTask}
+                              fullWidth
+                            />
+                            {submissionError && <Alert severity="error">{submissionError}</Alert>}
+                            <Box><Button type="submit" variant="contained" disabled={submitting || !canSubmitTask}>{submitting ? 'Submitting…' : 'Submit task'}</Button></Box>
+                          </Stack>
+                        </Box>
                       )}
                     </Stack>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2, lineHeight: 1.75 }}>No technical task has been assigned yet.</Typography>
                   )}
-                  <Box sx={{ mt: 2.5, p: 2, bgcolor: '#f8fafc', border: 1, borderStyle: 'dashed', borderColor: 'divider', borderRadius: 1.5 }}><Typography variant="caption" color="text.secondary">Task submission is not available yet.</Typography></Box>
                 </CardContent>
               </Card>
             </Stack>
