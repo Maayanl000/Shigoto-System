@@ -10,9 +10,11 @@ import com.shigoto.backend.repository.InterviewRepository;
 import com.shigoto.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -70,12 +72,16 @@ public class InterviewService {
     }
 
     @Transactional(readOnly = true)
-    public List<CandidateInterviewResponseDTO> getCandidateInterviews(Long applicationId) {
-        if (!applicationRepository.existsById(applicationId)) {
-            throw new ResourceNotFoundException("Application not found with id: " + applicationId);
+    public List<CandidateInterviewResponseDTO> getCandidateInterviews(Long applicationId, User candidate) {
+        if (candidate == null || candidate.getRole() != Role.CANDIDATE) {
+            throw new AccessDeniedException("Candidate access is required");
         }
-
-        // TODO: Verify that the application belongs to the authenticated Candidate once authentication is implemented.
+        Application application = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Application not found with id: " + applicationId));
+        if (!Objects.equals(application.getCandidate().getId(), candidate.getId())) {
+            throw new AccessDeniedException("Application does not belong to the authenticated candidate");
+        }
         return interviewRepository.findByApplicationIdOrderByScheduledAtAsc(applicationId)
                 .stream()
                 .map(this::toCandidateResponseDTO)

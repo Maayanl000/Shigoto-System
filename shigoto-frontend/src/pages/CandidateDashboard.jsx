@@ -9,9 +9,6 @@ import PageSkeleton from '../components/PageSkeleton';
 import api from '../services/api';
 import { getApplicationStatusDisplay, recruitmentStages } from '../utils/applicationStatus';
 
-// TODO: Replace this development ID with the authenticated current user's ID when authentication is implemented.
-const DEVELOPMENT_CANDIDATE_ID = 2;
-
 const inactiveStatuses = new Set(['REJECTED', 'OFFER']);
 
 function formatAppliedDate(value) {
@@ -30,14 +27,18 @@ export default function CandidateDashboard() {
   useEffect(() => {
     let isCurrent = true;
 
-    api.get(`/applications/candidate/${DEVELOPMENT_CANDIDATE_ID}`)
+    api.get('/applications/mine')
       .then((response) => {
         if (!isCurrent) return;
         setApplications(Array.isArray(response.data) ? response.data : []);
         setLoadError(false);
       })
-      .catch(() => {
+      .catch((error) => {
         if (!isCurrent) return;
+        if (error.response?.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
         setApplications([]);
         setLoadError(true);
       })

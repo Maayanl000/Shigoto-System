@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Link, NavLink, useLocation } from 'react-router-dom';
-import { AppBar, Avatar, Box, Button, Chip, Divider, Drawer, IconButton, List, ListItemButton, ListItemIcon, ListItemText, Stack, Toolbar, Tooltip, Typography } from '@mui/material';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { AppBar, Avatar, Box, Chip, Divider, Drawer, IconButton, List, ListItemButton, ListItemIcon, ListItemText, Stack, Toolbar, Tooltip, Typography } from '@mui/material';
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined';
 import ViewKanbanOutlinedIcon from '@mui/icons-material/ViewKanbanOutlined';
 import WorkOutlineRoundedIcon from '@mui/icons-material/WorkOutlineRounded';
@@ -11,6 +11,8 @@ import PublicRoundedIcon from '@mui/icons-material/PublicRounded';
 import ContactSupportOutlinedIcon from '@mui/icons-material/ContactSupportOutlined';
 import ChevronLeftRoundedIcon from '@mui/icons-material/ChevronLeftRounded';
 import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
+import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
+import { useAuth } from '../auth/authContext';
 
 const expandedWidth = 248;
 const collapsedWidth = 76;
@@ -50,12 +52,23 @@ function getArea(pathname) {
 }
 
 export default function DashboardShell({ children }) {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const { pathname } = useLocation();
   const activeArea = getArea(pathname);
   const config = areaConfig[activeArea];
   const desktopWidth = collapsed ? collapsedWidth : expandedWidth;
+  const userInitials = `${user?.firstName?.[0] || ''}${user?.lastName?.[0] || ''}`.toUpperCase() || config.initials;
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } finally {
+      navigate('/login', { replace: true });
+    }
+  };
 
   const drawerContent = (isCollapsed) => {
     const labelSx = {
@@ -116,18 +129,6 @@ export default function DashboardShell({ children }) {
         </List>
 
         <Box sx={{ mt: 'auto', px: 1.25, pb: 2 }}>
-          {!isCollapsed && (
-            <Box sx={{ px: 0.75, mb: 1.5 }}>
-              <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'rgba(255,255,255,0.5)' }}>Preview another workspace</Typography>
-              <Stack direction="row" spacing={0.5}>
-                {Object.entries(areaConfig).map(([key, area]) => (
-                  <Tooltip key={key} title={area.label}>
-                    <Button component={Link} to={`/${key}`} onClick={() => setMobileOpen(false)} size="small" aria-label={area.label} sx={{ minWidth: 38, px: 1, color: key === activeArea ? '#fff' : 'rgba(255,255,255,0.58)', bgcolor: key === activeArea ? 'rgba(255,255,255,0.12)' : 'transparent' }}>{area.initials}</Button>
-                  </Tooltip>
-                ))}
-              </Stack>
-            </Box>
-          )}
           <Divider sx={{ mb: 1, borderColor: 'rgba(255,255,255,0.12)' }} />
           <Tooltip title={isCollapsed ? 'Contact Us' : ''} placement="right">
             <ListItemButton component={Link} to="/contact" onClick={() => setMobileOpen(false)} aria-label="Contact Us" sx={navItemSx}>
@@ -139,6 +140,12 @@ export default function DashboardShell({ children }) {
             <ListItemButton component={Link} to="/" onClick={() => setMobileOpen(false)} aria-label="Public website" sx={navItemSx}>
               <ListItemIcon><PublicRoundedIcon /></ListItemIcon>
               <ListItemText primary="Public website" primaryTypographyProps={{ variant: 'body2', fontWeight: 650 }} sx={labelSx} />
+            </ListItemButton>
+          </Tooltip>
+          <Tooltip title={isCollapsed ? 'Log out' : ''} placement="right">
+            <ListItemButton onClick={handleLogout} aria-label="Log out" sx={navItemSx}>
+              <ListItemIcon><LogoutRoundedIcon /></ListItemIcon>
+              <ListItemText primary="Log out" primaryTypographyProps={{ variant: 'body2', fontWeight: 650 }} sx={labelSx} />
             </ListItemButton>
           </Tooltip>
         </Box>
@@ -162,9 +169,9 @@ export default function DashboardShell({ children }) {
       >
         <Toolbar sx={{ minHeight: 64 }}>
           <IconButton aria-label="Open workspace navigation" onClick={() => setMobileOpen(true)} sx={{ display: { md: 'none' }, mr: 1 }}><MenuRoundedIcon /></IconButton>
-          <Box sx={{ flex: 1 }}><Typography variant="body2" fontWeight={700}>{config.label}</Typography><Typography variant="caption" color="text.secondary">Frontend workspace preview</Typography></Box>
-          <Chip label="Demo mode" size="small" variant="outlined" sx={{ mr: 1.5 }} />
-          <Avatar sx={{ width: 34, height: 34, bgcolor: 'secondary.main', fontSize: 13 }}>{config.initials}</Avatar>
+          <Box sx={{ flex: 1 }}><Typography variant="body2" fontWeight={700}>{config.label}</Typography><Typography variant="caption" color="text.secondary">{user?.firstName} {user?.lastName}</Typography></Box>
+          <Chip label={user?.role} size="small" variant="outlined" sx={{ mr: 1.5 }} />
+          <Avatar sx={{ width: 34, height: 34, bgcolor: 'secondary.main', fontSize: 13 }}>{userInitials}</Avatar>
         </Toolbar>
       </AppBar>
 

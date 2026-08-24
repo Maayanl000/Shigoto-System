@@ -1,8 +1,58 @@
-import { Link } from 'react-router-dom';
-import { Box, Button, Card, CardContent, Chip, Divider, Stack, TextField, Typography } from '@mui/material';
+import { useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Alert, Box, Button, Card, CardContent, Chip, Divider, Grid, Stack, TextField, Typography } from '@mui/material';
 import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined';
+import { useAuth } from '../auth/authContext';
 
 export default function Register() {
+  const { register } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [values, setValues] = useState({ firstName: '', lastName: '', email: '', password: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleChange = (field) => (event) => {
+    setValues((current) => ({ ...current, [field]: event.target.value }));
+    setError('');
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim());
+    if (!values.firstName.trim() || !values.lastName.trim()) {
+      setError('First name and last name are required.');
+      return;
+    }
+    if (!emailValid) {
+      setError('Enter a valid email address.');
+      return;
+    }
+    if (values.password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+
+    setSubmitting(true);
+    setError('');
+    try {
+      await register({
+        firstName: values.firstName.trim(),
+        lastName: values.lastName.trim(),
+        email: values.email.trim(),
+        password: values.password,
+      });
+      const returnPath = typeof location.state?.from === 'string' ? location.state.from : '/candidate';
+      navigate(returnPath, { replace: true });
+    } catch (requestError) {
+      setError(requestError.response?.status === 409
+        ? 'An account with this email already exists.'
+        : 'We could not create your account. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <Box sx={{ minHeight: { xs: 690, md: 760 }, px: 2, py: { xs: 5, md: 8 }, bgcolor: 'background.default' }}>
       <Box sx={{ maxWidth: 520, mx: 'auto', textAlign: 'left' }}>
@@ -14,20 +64,21 @@ export default function Register() {
         <Typography color="text.secondary">Start a candidate account for Shigoto opportunities.</Typography>
       </Box>
       <Card sx={{ bgcolor: 'background.paper', borderColor: 'divider', borderTop: 3, borderTopColor: 'secondary.main', boxShadow: '0 14px 38px rgba(16,35,61,0.10)' }}>
-        <CardContent sx={{ display: 'grid', gap: 2.25 }}>
+        <CardContent component="form" noValidate onSubmit={handleSubmit} sx={{ display: 'grid', gap: 2.25 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Typography variant="h6">Profile and credentials</Typography>
-            <Chip label="UI preview" size="small" variant="outlined" />
+            <Chip label="Candidate account" size="small" variant="outlined" />
           </Stack>
-          <TextField label="Full name" disabled fullWidth />
-          <TextField label="Email" type="email" disabled fullWidth />
-          <TextField label="Password" type="password" disabled fullWidth />
-          <Button variant="contained" disabled fullWidth>Create account</Button>
+          {error && <Alert severity="error">{error}</Alert>}
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 12, sm: 6 }}><TextField label="First name" value={values.firstName} onChange={handleChange('firstName')} autoComplete="given-name" required disabled={submitting} fullWidth /></Grid>
+            <Grid size={{ xs: 12, sm: 6 }}><TextField label="Last name" value={values.lastName} onChange={handleChange('lastName')} autoComplete="family-name" required disabled={submitting} fullWidth /></Grid>
+          </Grid>
+          <TextField label="Email" type="email" value={values.email} onChange={handleChange('email')} autoComplete="email" required disabled={submitting} fullWidth />
+          <TextField label="Password" type="password" value={values.password} onChange={handleChange('password')} helperText="Use at least 8 characters." autoComplete="new-password" required disabled={submitting} fullWidth />
+          <Button type="submit" variant="contained" disabled={submitting} fullWidth>{submitting ? 'Creating account…' : 'Create account'}</Button>
           <Divider />
-          <Button component={Link} to="/login">Already registered? Log in</Button>
-          <Typography variant="caption" color="text.secondary" textAlign="center">
-            Registration is intentionally unavailable in this UI preview.
-          </Typography>
+          <Button component={Link} to="/login" state={location.state} disabled={submitting}>Already registered? Log in</Button>
         </CardContent>
       </Card>
       </Box>

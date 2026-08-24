@@ -5,6 +5,7 @@ import com.shigoto.backend.entity.Application;
 import com.shigoto.backend.entity.ApplicationStatus; // הנה ה-import הנקי שהוספנו!
 import com.shigoto.backend.entity.JobStatus;
 import com.shigoto.backend.entity.Role;
+import com.shigoto.backend.entity.User;
 import com.shigoto.backend.exception.DuplicateApplicationException;
 import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.ApplicationRepository;
@@ -12,6 +13,7 @@ import com.shigoto.backend.repository.JobRepository;
 import com.shigoto.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
@@ -19,6 +21,7 @@ import java.net.URISyntaxException;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -28,10 +31,7 @@ public class ApplicationService {
     private final UserRepository userRepository;
     private final JobRepository jobRepository;
 
-    public Application createApplication(Long candidateId, Long jobId, String cvUrl, String coverLetter) {
-        var candidate = userRepository.findById(candidateId)
-                .orElseThrow(() -> new ResourceNotFoundException("Candidate not found with id: " + candidateId));
-
+    public Application createApplication(User candidate, Long jobId, String cvUrl, String coverLetter) {
         if (candidate.getRole() != Role.CANDIDATE) {
             throw new IllegalArgumentException("Referenced user is not a candidate");
         }
@@ -43,7 +43,7 @@ public class ApplicationService {
             throw new IllegalArgumentException("Job is not open for applications");
         }
 
-        if (applicationRepository.existsByCandidateIdAndJobId(candidateId, jobId)) {
+        if (applicationRepository.existsByCandidateIdAndJobId(candidate.getId(), jobId)) {
             throw new DuplicateApplicationException("Candidate has already applied for this job");
         }
 
@@ -111,21 +111,20 @@ public class ApplicationService {
                 .toList();
     }
 
-    public ApplicationResponseDTO getApplicationById(Long applicationId) {
-        var application = applicationRepository.findById(applicationId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Application not found with id: " + applicationId));
-
-        // TODO: Verify that this application belongs to the authenticated Candidate once authentication is implemented.
-        return toResponseDTO(application);
+    public List<ApplicationResponseDTO> getApplicationsForCandidate(User candidate) {
+        requireCandidateRole(candidate);
+        return applicationRepository.findByCandidateIdOrderByAppliedAtDesc(candidate.getId())
+                .stream()
+                .map(this::toResponseDTO)
+                .toList();
     }
 
-    public ApplicationResponseDTO submitTask(Long applicationId, String repositoryUrl) {
-        Application application = applicationRepository.findById(applicationId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Application not found with id: " + applicationId));
+    public ApplicationResponseDTO getOwnedApplicationById(Long applicationId, User candidate) {
+        return toResponseDTO(findOwnedApplication(applicationId, candidate));
+    }
 
-        // TODO: Verify that this application belongs to the authenticated Candidate once authentication is implemented.
+    public ApplicationResponseDTO submitTask(Long applicationId, String repositoryUrl, User candidate) {
+        Application application = findOwnedApplication(applicationId, candidate);
         if (application.getStatus() == ApplicationStatus.TASK_SUBMITTED) {
             throw new IllegalArgumentException("Technical task has already been submitted");
         }
@@ -146,6 +145,23 @@ public class ApplicationService {
         application.setStatus(ApplicationStatus.TASK_SUBMITTED);
 
         return toResponseDTO(applicationRepository.save(application));
+    }
+
+    private Application findOwnedApplication(Long applicationId, User candidate) {
+        requireCandidateRole(candidate);
+        Application application = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Application not found with id: " + applicationId));
+        if (!Objects.equals(application.getCandidate().getId(), candidate.getId())) {
+            throw new AccessDeniedException("Application does not belong to the authenticated candidate");
+        }
+        return application;
+    }
+
+    private void requireCandidateRole(User candidate) {
+        if (candidate == null || candidate.getRole() != Role.CANDIDATE) {
+            throw new AccessDeniedException("Candidate access is required");
+        }
     }
 
     private String validateRepositoryUrl(String repositoryUrl) {

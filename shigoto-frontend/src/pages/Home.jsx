@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Typography, Grid, Card, CardContent, CardActions, Button, Chip, Box, CircularProgress, Container, Divider, Drawer, IconButton, InputAdornment, Stack, TextField } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { Alert, Typography, Grid, Card, CardContent, CardActions, Button, Chip, Box, CircularProgress, Container, Divider, Drawer, IconButton, InputAdornment, Stack, TextField } from '@mui/material';
 import WorkIcon from '@mui/icons-material/Work';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded';
@@ -9,12 +10,31 @@ import ApplicationDialog from '../components/ApplicationDialog';
 import WorkspaceShowcase from '../components/WorkspaceShowcase';
 import api from '../services/api';
 import professionalNetworkImage from '../assets/ChatGPT Image Aug 22, 2026, 05_35_31 PM.png';
+import { useAuth } from '../auth/authContext';
 
 export default function Home() {
+  const { user, loading: authLoading } = useAuth();
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState(null);
   const [applicationJob, setApplicationJob] = useState(null);
+  const [applyMessage, setApplyMessage] = useState('');
+
+  const handleApply = () => {
+    if (!user) {
+      setSelectedJob(null);
+      navigate('/login', { state: { from: '/#jobs' } });
+      return;
+    }
+    if (user.role !== 'CANDIDATE') {
+      setApplyMessage('Job applications are available to Candidate accounts only.');
+      return;
+    }
+    setApplicationJob(selectedJob);
+    setSelectedJob(null);
+    setApplyMessage('');
+  };
 
   // שליפת המשרות מהשרת בעת טעינת העמוד
   useEffect(() => {
@@ -144,7 +164,7 @@ export default function Home() {
                       <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.7 }}>Review this technology opportunity and the planned candidate application experience.</Typography>
                     </CardContent>
                     <CardActions sx={{ px: 3, pb: 3, pt: 0 }}>
-                      <Button onClick={() => setSelectedJob(job)} variant="outlined" fullWidth endIcon={<ArrowForwardRoundedIcon />}>View role</Button>
+                      <Button onClick={() => { setSelectedJob(job); setApplyMessage(''); }} variant="outlined" fullWidth endIcon={<ArrowForwardRoundedIcon />}>View role</Button>
                     </CardActions>
                   </Card>
                 </Grid>
@@ -174,7 +194,8 @@ export default function Home() {
           <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>Recruitment process</Typography>
           <Typography color="text.secondary" sx={{ lineHeight: 1.8 }}>Candidates may move through application review, a home task, and technical interviews as appropriate for the role.</Typography>
           <Box sx={{ mt: 4, p: 2, bgcolor: 'secondary.light', borderRadius: 1.5 }}><Typography variant="caption" color="secondary.dark" fontWeight={700}>Preview content — detailed backend job data is not connected here.</Typography></Box>
-          <Button variant="contained" fullWidth sx={{ mt: 3 }} onClick={() => { setApplicationJob(selectedJob); setSelectedJob(null); }}>Apply to this role</Button>
+          {applyMessage && <Alert severity="info" sx={{ mt: 2 }}>{applyMessage}</Alert>}
+          <Button variant="contained" fullWidth sx={{ mt: 3 }} onClick={handleApply} disabled={authLoading}>Apply to this role</Button>
         </Box>
       </Drawer>
       <ApplicationDialog open={Boolean(applicationJob)} job={applicationJob} onClose={() => setApplicationJob(null)} />

@@ -8,6 +8,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.List;
 
@@ -19,7 +20,8 @@ public class ShigotoApplication {
     }
 
     @Bean
-    CommandLineRunner initDatabase(UserRepository userRepository, JobRepository jobRepository, CompanyRepository companyRepository) {
+    CommandLineRunner initDatabase(UserRepository userRepository, JobRepository jobRepository,
+                                   CompanyRepository companyRepository, PasswordEncoder passwordEncoder) {
         return args -> {
 
             // 1. משיכת החברה קודם. רק אם היא לא קיימת - ניצור אותה
@@ -39,7 +41,7 @@ public class ShigotoApplication {
                     .firstName("Maayan")
                     .lastName("Lahyani")
                     .email("maayan@wix.com")
-                    .password("password123") // שימי לב שזה רק לטסטים
+                    .password(passwordEncoder.encode("password123")) // Development seed only
                     .role(Role.HR)
                     .company(wix) // שיוך המגייסת לחברה שמצאנו או יצרנו
                     .build();

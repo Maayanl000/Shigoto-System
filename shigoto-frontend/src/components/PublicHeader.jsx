@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { AppBar, Box, Button, Container, Divider, Drawer, IconButton, Stack, Toolbar, Typography } from '@mui/material';
+import { AppBar, Box, Button, Chip, Container, Divider, Drawer, IconButton, Stack, Toolbar, Typography } from '@mui/material';
 import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
+import { useAuth } from '../auth/authContext';
 
 const standardLinks = [
   { label: 'About Us', to: '/about', side: 'left' },
   { label: 'Contact Us', to: '/contact', side: 'left' },
-  { label: 'Login', to: '/login', side: 'right' },
 ];
+
+const roleHomes = { CANDIDATE: '/candidate', HR: '/hr', INTERVIEWER: '/interviewer' };
 
 const navButtonSx = {
   color: 'text.secondary',
@@ -19,11 +21,18 @@ const navButtonSx = {
 };
 
 export default function PublicHeader() {
+  const { user, loading, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
   const closeMenu = () => setMobileOpen(false);
+  const dashboardPath = roleHomes[user?.role] || '/';
+  const handleLogout = async () => {
+    closeMenu();
+    await logout();
+    navigate('/', { replace: true });
+  };
   const goHome = () => {
     closeMenu();
     if (location.pathname === '/' && !location.hash) {
@@ -95,10 +104,19 @@ export default function PublicHeader() {
               spacing={0.25}
               sx={{ display: { xs: 'none', lg: 'flex' }, position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', minWidth: 0 }}
             >
-              {standardLinks.filter((link) => link.side === 'right').map((link) => (
-                <Button key={link.to} component={NavLink} to={link.to} sx={navButtonSx}>{link.label}</Button>
-              ))}
-              <Button component={NavLink} to="/register" variant="contained" sx={{ ml: 1.25, whiteSpace: 'nowrap' }}>Sign Up</Button>
+              {!loading && !user && (
+                <>
+                  <Button component={NavLink} to="/login" sx={navButtonSx}>Login</Button>
+                  <Button component={NavLink} to="/register" variant="contained" sx={{ ml: 1.25, whiteSpace: 'nowrap' }}>Sign Up</Button>
+                </>
+              )}
+              {!loading && user && (
+                <>
+                  <Chip label={`Hi, ${user.firstName}`} size="small" variant="outlined" />
+                  <Button component={NavLink} to={dashboardPath} sx={navButtonSx}>Dashboard</Button>
+                  <Button onClick={handleLogout} color="inherit">Logout</Button>
+                </>
+              )}
             </Stack>
 
             <IconButton aria-label="Open navigation menu" onClick={() => setMobileOpen(true)} sx={{ display: { lg: 'none' }, gridColumn: 2, ml: 'auto' }}>
@@ -121,7 +139,19 @@ export default function PublicHeader() {
             {standardLinks.map((link) => (
               <Button key={link.to} component={NavLink} to={link.to} onClick={closeMenu} sx={{ justifyContent: 'flex-start', color: 'text.primary' }}>{link.label}</Button>
             ))}
-            <Button component={NavLink} to="/register" variant="contained" onClick={closeMenu} sx={{ mt: 1 }}>Sign Up</Button>
+            {!loading && !user && (
+              <>
+                <Button component={NavLink} to="/login" onClick={closeMenu} sx={{ justifyContent: 'flex-start', color: 'text.primary' }}>Login</Button>
+                <Button component={NavLink} to="/register" variant="contained" onClick={closeMenu} sx={{ mt: 1 }}>Sign Up</Button>
+              </>
+            )}
+            {!loading && user && (
+              <>
+                <Typography variant="body2" color="text.secondary" sx={{ px: 1, py: 0.75 }}>Signed in as {user.firstName}</Typography>
+                <Button component={NavLink} to={dashboardPath} onClick={closeMenu} sx={{ justifyContent: 'flex-start', color: 'text.primary' }}>Dashboard</Button>
+                <Button onClick={handleLogout} sx={{ justifyContent: 'flex-start', color: 'text.primary' }}>Logout</Button>
+              </>
+            )}
           </Stack>
         </Box>
       </Drawer>

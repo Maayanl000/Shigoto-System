@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { Box } from '@mui/material';
+import { Box, CircularProgress } from '@mui/material';
+import AuthProvider from './auth/AuthProvider';
+import { useAuth } from './auth/authContext';
 import PublicHeader from './components/PublicHeader';
 import PublicFooter from './components/PublicFooter';
 import DashboardShell from './components/DashboardShell';
@@ -21,6 +23,23 @@ import InterviewFeedback from './pages/InterviewFeedback';
 
 const publicPaths = ['/', '/jobs', '/about', '/contact', '/login', '/register'];
 
+const roleHomes = {
+  CANDIDATE: '/candidate',
+  HR: '/hr',
+  INTERVIEWER: '/interviewer',
+};
+
+function RequireRole({ role, children }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <Box sx={{ minHeight: '60vh', display: 'grid', placeItems: 'center' }}><CircularProgress size={32} /></Box>;
+  }
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== role) return <Navigate to={roleHomes[user.role] || '/'} replace />;
+  return children;
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -30,15 +49,15 @@ function AppRoutes() {
       <Route path="/contact" element={<ContactUs />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
-      <Route path="/candidate" element={<CandidateDashboard />} />
-      <Route path="/candidate/applications/new" element={<ApplicationForm />} />
-      <Route path="/candidate/applications/:applicationId" element={<CandidateApplicationDetails />} />
-      <Route path="/hr" element={<HrDashboard />} />
-      <Route path="/hr/jobs" element={<JobManagement />} />
-      <Route path="/hr/candidates/:candidateId" element={<CandidateDetails />} />
-      <Route path="/interviewer" element={<InterviewerDashboard />} />
-      <Route path="/interviewer/interviews/:interviewId" element={<InterviewDetails />} />
-      <Route path="/interviewer/interviews/:interviewId/feedback" element={<InterviewFeedback />} />
+      <Route path="/candidate" element={<RequireRole role="CANDIDATE"><CandidateDashboard /></RequireRole>} />
+      <Route path="/candidate/applications/new" element={<RequireRole role="CANDIDATE"><ApplicationForm /></RequireRole>} />
+      <Route path="/candidate/applications/:applicationId" element={<RequireRole role="CANDIDATE"><CandidateApplicationDetails /></RequireRole>} />
+      <Route path="/hr" element={<RequireRole role="HR"><HrDashboard /></RequireRole>} />
+      <Route path="/hr/jobs" element={<RequireRole role="HR"><JobManagement /></RequireRole>} />
+      <Route path="/hr/candidates/:candidateId" element={<RequireRole role="HR"><CandidateDetails /></RequireRole>} />
+      <Route path="/interviewer" element={<RequireRole role="INTERVIEWER"><InterviewerDashboard /></RequireRole>} />
+      <Route path="/interviewer/interviews/:interviewId" element={<RequireRole role="INTERVIEWER"><InterviewDetails /></RequireRole>} />
+      <Route path="/interviewer/interviews/:interviewId/feedback" element={<RequireRole role="INTERVIEWER"><InterviewFeedback /></RequireRole>} />
     </Routes>
   );
 }
@@ -87,10 +106,12 @@ function AppLayout() {
 
 function App() {
   return (
-    <BrowserRouter>
-      <NavigationScrollManager />
-      <AppLayout />
-    </BrowserRouter>
+    <AuthProvider>
+      <BrowserRouter>
+        <NavigationScrollManager />
+        <AppLayout />
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 

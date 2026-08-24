@@ -4,9 +4,6 @@ import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
 import api from '../services/api';
 
-// TODO: Replace this development ID with the authenticated current user's ID when authentication is implemented.
-const DEVELOPMENT_CANDIDATE_ID = 2;
-
 const initialFormValues = {
   fullName: '',
   email: '',
@@ -100,7 +97,6 @@ export default function ApplicationDialog({ open, onClose, job }) {
 
     try {
       await api.post('/applications', {
-        candidateId: DEVELOPMENT_CANDIDATE_ID,
         jobId: job.id,
         // TODO: Replace null with the stored CV URL when CV upload and storage are implemented.
         cvUrl: null,
@@ -108,7 +104,10 @@ export default function ApplicationDialog({ open, onClose, job }) {
       });
       setSubmissionStatus('success');
     } catch (error) {
-      if (error.response?.status === 409) {
+      if (error.response?.status === 401) {
+        window.location.assign('/login');
+        return;
+      } else if (error.response?.status === 409) {
         setSubmissionError('You have already applied for this position.');
       } else {
         const backendMessage = error.response?.data?.message;
@@ -135,7 +134,7 @@ export default function ApplicationDialog({ open, onClose, job }) {
         </DialogTitle>
         <Divider />
         <DialogContent sx={{ display: 'grid', gap: 2.5, pt: 3 }}>
-          <Alert severity="info" icon={false}>Development mode: applications use candidate ID 2, and the selected CV is not uploaded yet.</Alert>
+          <Alert severity="info" icon={false}>Development mode: the selected CV is not uploaded yet.</Alert>
           {!canSubmitJob && <Alert severity="warning">This preview job is not connected to the backend and cannot accept applications.</Alert>}
           {submissionStatus === 'success' && <Alert severity="success">Your application was submitted successfully.</Alert>}
           {submissionStatus === 'error' && <Alert severity="error">{submissionError}</Alert>}

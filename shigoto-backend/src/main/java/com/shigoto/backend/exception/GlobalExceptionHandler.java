@@ -3,6 +3,8 @@ package com.shigoto.backend.exception;
 import com.shigoto.backend.dto.ErrorResponseDTO;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -32,6 +34,21 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DuplicateApplicationException.class)
     public ResponseEntity<ErrorResponseDTO> handleConflict(DuplicateApplicationException ex) {
         return buildErrorResponse(ex.getMessage(), HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(DuplicateEmailException.class)
+    public ResponseEntity<ErrorResponseDTO> handleDuplicateEmail(DuplicateEmailException ex) {
+        return buildErrorResponse(ex.getMessage(), HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ErrorResponseDTO> handleAuthentication(AuthenticationException ex) {
+        return buildErrorResponse("Invalid email or password", HttpStatus.UNAUTHORIZED);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponseDTO> handleAccessDenied(AccessDeniedException ex) {
+        return buildErrorResponse("Access denied", HttpStatus.FORBIDDEN);
     }
 
     private ResponseEntity<ErrorResponseDTO> buildErrorResponse(String message, HttpStatus status) {

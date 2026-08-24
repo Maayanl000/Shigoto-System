@@ -93,6 +93,10 @@ export default function CandidateApplicationDetails() {
       })
       .catch((error) => {
         if (!isCurrent) return;
+        if (error.response?.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
         setApplication(null);
         setLoadError(error.response?.status === 404 ? 'not-found' : 'error');
       })
@@ -116,8 +120,12 @@ export default function CandidateApplicationDetails() {
         setInterviews(Array.isArray(response.data) ? response.data : []);
         setInterviewLoadError(false);
       })
-      .catch(() => {
+      .catch((error) => {
         if (!isCurrent) return;
+        if (error.response?.status === 401) {
+          window.location.assign('/login');
+          return;
+        }
         setInterviews([]);
         setInterviewLoadError(true);
       })
@@ -171,6 +179,10 @@ export default function CandidateApplicationDetails() {
       setRepositoryUrl('');
       setSubmissionSuccess(true);
     } catch (error) {
+      if (error.response?.status === 401) {
+        window.location.assign('/login');
+        return;
+      }
       const backendMessage = error.response?.data?.message;
       setSubmissionError(
         typeof backendMessage === 'string' && backendMessage.trim()

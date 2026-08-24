@@ -3,10 +3,13 @@ package com.shigoto.backend.controller;
 import com.shigoto.backend.dto.ApplicationResponseDTO;
 import com.shigoto.backend.dto.TaskSubmissionRequestDTO;
 import com.shigoto.backend.entity.Application;
-import com.shigoto.backend.entity.ApplicationStatus; // ה-import הנקי של הסטטוס
+import com.shigoto.backend.entity.ApplicationStatus;
+import com.shigoto.backend.entity.User;
 import com.shigoto.backend.service.ApplicationService;
+import com.shigoto.backend.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -15,37 +18,33 @@ import java.util.List;
 @RequestMapping("/api/applications")
 @RequiredArgsConstructor
 public class ApplicationController {
-
     private final ApplicationService applicationService;
+    private final AuthService authService;
 
-    // מעטפת נתונים (Record) ליצירת מועמדות חדשה
-    public record ApplicationRequest(Long candidateId, Long jobId, String cvUrl, String coverLetter) {}
-
-    // מעטפת נתונים (Record) חדשה לעדכון סטטוס והערות מנהל גיוס
+    public record ApplicationRequest(Long jobId, String cvUrl, String coverLetter) {}
     public record UpdateApplicationRequest(ApplicationStatus status, String hrNotes) {}
 
     @PostMapping
-    public ResponseEntity<Application> createApplication(@RequestBody ApplicationRequest request) {
-        if (request.candidateId() == null) {
-            throw new IllegalArgumentException("candidateId must not be null");
-        }
+    public ResponseEntity<Application> createApplication(
+            @RequestBody ApplicationRequest request,
+            Authentication authentication) {
         if (request.jobId() == null) {
             throw new IllegalArgumentException("jobId must not be null");
         }
-
-        Application savedApplication = applicationService.createApplication(
-                request.candidateId(),
-                request.jobId(),
-                request.cvUrl(),
-                request.coverLetter()
-        );
-
-        return ResponseEntity.ok(savedApplication);
+        User candidate = authService.getAuthenticatedCandidate(authentication);
+        return ResponseEntity.ok(applicationService.createApplication(
+                candidate, request.jobId(), request.cvUrl(), request.coverLetter()));
     }
 
     @GetMapping
     public ResponseEntity<List<ApplicationResponseDTO>> getAllApplications() {
         return ResponseEntity.ok(applicationService.getAllApplications());
+    }
+
+    @GetMapping("/mine")
+    public ResponseEntity<List<ApplicationResponseDTO>> getMyApplications(Authentication authentication) {
+        User candidate = authService.getAuthenticatedCandidate(authentication);
+        return ResponseEntity.ok(applicationService.getApplicationsForCandidate(candidate));
     }
 
     @GetMapping("/candidate/{candidateId}")
@@ -56,39 +55,36 @@ public class ApplicationController {
 
     @GetMapping("/{applicationId}")
     public ResponseEntity<ApplicationResponseDTO> getApplicationById(
-            @PathVariable Long applicationId) {
-        return ResponseEntity.ok(applicationService.getApplicationById(applicationId));
+            @PathVariable Long applicationId,
+            Authentication authentication) {
+        User candidate = authService.getAuthenticatedCandidate(authentication);
+        return ResponseEntity.ok(applicationService.getOwnedApplicationById(applicationId, candidate));
     }
 
     @PutMapping("/{applicationId}/task-submission")
     public ResponseEntity<ApplicationResponseDTO> submitTask(
             @PathVariable Long applicationId,
-            @RequestBody TaskSubmissionRequestDTO request) {
+            @RequestBody TaskSubmissionRequestDTO request,
+            Authentication authentication) {
         if (request == null) {
             throw new IllegalArgumentException("Repository URL is required");
         }
+        User candidate = authService.getAuthenticatedCandidate(authentication);
         return ResponseEntity.ok(
-                applicationService.submitTask(applicationId, request.repositoryUrl()));
+                applicationService.submitTask(applicationId, request.repositoryUrl(), candidate));
     }
 
-    // נקודת קצה (Endpoint) חדשה לעדכון מועמדות לפי ה-ID שלה
     @PutMapping("/{id}")
     public ResponseEntity<Application> updateApplication(
             @PathVariable Long id,
             @RequestBody UpdateApplicationRequest request) {
-
-        Application updatedApplication = applicationService.updateApplicationStatus(
-                id,
-                request.status(),
-                request.hrNotes()
-        );
-
-        return ResponseEntity.ok(updatedApplication);
+        return ResponseEntity.ok(applicationService.updateApplicationStatus(
+                id, request.status(), request.hrNotes()));
     }
-    // נקודת קצה למחיקת מועמדות לפי ID
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteApplication(@PathVariable Long id) {
         applicationService.deleteApplication(id);
-        return ResponseEntity.noContent().build(); // מחזיר סטטוס 24 No Content המציין שהמחיקה הצליחה
+        return ResponseEntity.noContent().build();
     }
 }
