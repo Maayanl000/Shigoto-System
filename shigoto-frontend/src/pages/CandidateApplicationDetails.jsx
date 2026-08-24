@@ -9,7 +9,16 @@ import api from '../services/api';
 import { getApplicationStatusDisplay, recruitmentStages } from '../utils/applicationStatus';
 
 const taskStatuses = new Set(['TASK_SENT', 'TASK_SUBMITTED', 'TASK_APPROVED']);
-const interviewStatuses = new Set(['HR_INTERVIEW', 'TECH_INTERVIEW_SCHEDULED']);
+const interviewTypeLabels = {
+  HR: 'HR Interview',
+  TECHNICAL: 'Technical Interview',
+  MANAGER: 'Manager Interview',
+};
+const interviewStatusLabels = {
+  SCHEDULED: 'Scheduled',
+  COMPLETED: 'Completed',
+  CANCELED: 'Canceled',
+};
 
 function formatDateTime(value) {
   if (!value) return null;
@@ -17,6 +26,19 @@ function formatDateTime(value) {
   return Number.isNaN(date.getTime())
     ? null
     : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+}
+
+function formatInterviewSchedule(value) {
+  if (!value) return { date: 'Date unavailable', time: 'Time unavailable' };
+  const scheduledAt = new Date(value);
+  if (Number.isNaN(scheduledAt.getTime())) {
+    return { date: 'Date unavailable', time: 'Time unavailable' };
+  }
+
+  return {
+    date: new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(scheduledAt),
+    time: new Intl.DateTimeFormat(undefined, { timeStyle: 'short' }).format(scheduledAt),
+  };
 }
 
 function validateRepositoryUrl(value) {
@@ -48,6 +70,9 @@ export default function CandidateApplicationDetails() {
   const [submissionError, setSubmissionError] = useState(null);
   const [submissionSuccess, setSubmissionSuccess] = useState(false);
   const [taskDeadlineExpired, setTaskDeadlineExpired] = useState(false);
+  const [interviews, setInterviews] = useState([]);
+  const [interviewLoadError, setInterviewLoadError] = useState(false);
+  const [loadedInterviewApplicationId, setLoadedInterviewApplicationId] = useState(null);
 
   useEffect(() => {
     let isCurrent = true;
@@ -82,6 +107,30 @@ export default function CandidateApplicationDetails() {
     };
   }, [applicationId]);
 
+  useEffect(() => {
+    let isCurrent = true;
+
+    api.get(`/applications/${applicationId}/interviews`)
+      .then((response) => {
+        if (!isCurrent) return;
+        setInterviews(Array.isArray(response.data) ? response.data : []);
+        setInterviewLoadError(false);
+      })
+      .catch(() => {
+        if (!isCurrent) return;
+        setInterviews([]);
+        setInterviewLoadError(true);
+      })
+      .finally(() => {
+        if (!isCurrent) return;
+        setLoadedInterviewApplicationId(applicationId);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [applicationId]);
+
   const isLoading = loading || loadedApplicationId !== applicationId;
   const status = application ? getApplicationStatusDisplay(application.status) : null;
   const isTaskSubmitted = application && (
@@ -96,7 +145,7 @@ export default function CandidateApplicationDetails() {
     && hasValidTaskDeadline
     && !taskDeadlineExpired
     && !isTaskSubmitted;
-  const hasInterviewStage = application && interviewStatuses.has(application.status);
+  const isInterviewLoading = loadedInterviewApplicationId !== applicationId;
   const appliedAt = formatDateTime(application?.appliedAt);
   const taskDeadline = formatDateTime(application?.taskDeadline);
   const jobContext = application
@@ -234,8 +283,38 @@ export default function CandidateApplicationDetails() {
               <Card>
                 <CardContent>
                   <Stack direction="row" spacing={1} alignItems="center"><CalendarMonthOutlinedIcon color="secondary" /><Typography variant="h6">Interview</Typography></Stack>
-                  <Chip label={hasInterviewStage ? 'Details unavailable' : 'Not scheduled'} size="small" variant="outlined" sx={{ mt: 2 }} />
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>{hasInterviewStage ? 'The application is at an interview stage, but scheduling information is not included in the current application data.' : 'No interview information is currently available for this application.'}</Typography>
+                  {isInterviewLoading ? (
+                    <Stack direction="row" spacing={1.25} alignItems="center" sx={{ mt: 2 }}>
+                      <CircularProgress size={18} />
+                      <Typography variant="body2" color="text.secondary">Loading interview details…</Typography>
+                    </Stack>
+                  ) : interviewLoadError ? (
+                    <Alert severity="warning" sx={{ mt: 2 }}>Interview details could not be loaded.</Alert>
+                  ) : interviews.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>No interview scheduled yet.</Typography>
+                  ) : (
+                    <Stack spacing={2} sx={{ mt: 2 }}>
+                      {interviews.map((interview) => {
+                        const schedule = formatInterviewSchedule(interview.scheduledAt);
+                        return (
+                          <Box key={interview.id} sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 1.5 }}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
+                              <Typography variant="subtitle2" fontWeight={750}>{interviewTypeLabels[interview.type] || interview.type}</Typography>
+                              <Chip label={interviewStatusLabels[interview.status] || interview.status} size="small" variant="outlined" />
+                            </Stack>
+                            <Stack spacing={0.75} sx={{ mt: 1.5 }}>
+                              <Typography variant="body2"><strong>Interviewer:</strong> {interview.interviewerName}</Typography>
+                              <Typography variant="body2"><strong>Date:</strong> {schedule.date}</Typography>
+                              <Typography variant="body2"><strong>Time:</strong> {schedule.time}</Typography>
+                            </Stack>
+                            {interview.status === 'SCHEDULED' && interview.meetingLink && (
+                              <Button component="a" href={interview.meetingLink} target="_blank" rel="noopener noreferrer" variant="contained" size="small" sx={{ mt: 1.75 }}>Join interview</Button>
+                            )}
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                  )}
                 </CardContent>
               </Card>
 
