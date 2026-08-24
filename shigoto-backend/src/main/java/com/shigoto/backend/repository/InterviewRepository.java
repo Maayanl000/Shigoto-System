@@ -9,5 +9,5 @@ import java.util.List;
 public interface InterviewRepository extends JpaRepository<Interview, Long> {
 
     // פעולה שתעזור לנו בהמשך לשלוף את כל הראיונות שנקבעו למועמדות מסוימת
-    List<Interview> findByApplicationId(Long applicationId);
+    List<Interview> findByApplicationIdOrderByScheduledAtAsc(Long applicationId);
 }

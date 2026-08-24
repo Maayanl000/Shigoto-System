@@ -1,14 +1,18 @@
 package com.shigoto.backend.service;
 
+import com.shigoto.backend.dto.CandidateInterviewResponseDTO;
 import com.shigoto.backend.dto.InterviewRequestDTO;
 import com.shigoto.backend.dto.InterviewResponseDTO;
 import com.shigoto.backend.entity.*;
+import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.ApplicationRepository;
 import com.shigoto.backend.repository.InterviewRepository;
 import com.shigoto.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -62,6 +66,34 @@ public class InterviewService {
                 savedInterview.getFeedback(),
                 savedInterview.getType(),
                 savedInterview.getStatus()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<CandidateInterviewResponseDTO> getCandidateInterviews(Long applicationId) {
+        if (!applicationRepository.existsById(applicationId)) {
+            throw new ResourceNotFoundException("Application not found with id: " + applicationId);
+        }
+
+        // TODO: Verify that the application belongs to the authenticated Candidate once authentication is implemented.
+        return interviewRepository.findByApplicationIdOrderByScheduledAtAsc(applicationId)
+                .stream()
+                .map(this::toCandidateResponseDTO)
+                .toList();
+    }
+
+    private CandidateInterviewResponseDTO toCandidateResponseDTO(Interview interview) {
+        User interviewer = interview.getInterviewer();
+        String interviewerName = (interviewer.getFirstName() + " " + interviewer.getLastName()).trim();
+
+        return new CandidateInterviewResponseDTO(
+                interview.getId(),
+                interview.getApplication().getId(),
+                interviewerName,
+                interview.getScheduledAt(),
+                interview.getMeetingLink(),
+                interview.getType(),
+                interview.getStatus()
         );
     }
 }
