@@ -16,6 +16,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
 @Configuration
 @RequiredArgsConstructor
@@ -49,14 +51,23 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // The development REST client does not support CSRF tokens yet. Limit this exception
-                // to /api and enable CSRF protection before deploying cookie sessions to production.
-                .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**"))
+                .csrf(csrf -> csrf
+                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                        .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+                        .ignoringRequestMatchers("/api/auth/register", "/api/auth/login"))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
+                        .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/csrf").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/jobs", "/api/jobs/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/jobs").hasRole("HR")
                         .requestMatchers("/api/auth/me", "/api/auth/logout").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/auth/me/profile").authenticated()
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/applications",
+                                "/api/applications/candidate/**",
+                                "/api/users").hasRole("HR")
+                        .requestMatchers(HttpMethod.PUT, "/api/applications/{applicationId}").hasRole("HR")
+                        .requestMatchers(HttpMethod.DELETE, "/api/applications/{applicationId}").hasRole("HR")
+                        .requestMatchers(HttpMethod.POST, "/api/interviews").hasRole("HR")
                         .requestMatchers(HttpMethod.POST, "/api/applications").authenticated()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/applications/mine",
@@ -65,7 +76,6 @@ public class SecurityConfig {
                                 "/api/applications/{applicationId}/interviews").authenticated()
                         .requestMatchers(HttpMethod.PUT,
                                 "/api/applications/{applicationId}/task-submission").authenticated()
-                        // Existing APIs remain open during the incremental role/ownership migration.
                         .anyRequest().permitAll())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)));

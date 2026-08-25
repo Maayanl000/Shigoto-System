@@ -14,6 +14,7 @@ import Register from './pages/Register';
 import CandidateDashboard from './pages/CandidateDashboard';
 import ApplicationForm from './pages/ApplicationForm';
 import CandidateApplicationDetails from './pages/CandidateApplicationDetails';
+import CandidateProfile from './pages/CandidateProfile';
 import HrDashboard from './pages/HrDashboard';
 import JobManagement from './pages/JobManagement';
 import CandidateDetails from './pages/CandidateDetails';
@@ -30,9 +31,9 @@ const roleHomes = {
 };
 
 function RequireRole({ role, children }) {
-  const { user, loading } = useAuth();
+  const { user, loading, loggingOut } = useAuth();
 
-  if (loading) {
+  if (loading || loggingOut) {
     return <Box sx={{ minHeight: '60vh', display: 'grid', placeItems: 'center' }}><CircularProgress size={32} /></Box>;
   }
   if (!user) return <Navigate to="/login" replace />;
@@ -50,6 +51,7 @@ function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/candidate" element={<RequireRole role="CANDIDATE"><CandidateDashboard /></RequireRole>} />
+      <Route path="/candidate/profile" element={<RequireRole role="CANDIDATE"><CandidateProfile /></RequireRole>} />
       <Route path="/candidate/applications/new" element={<RequireRole role="CANDIDATE"><ApplicationForm /></RequireRole>} />
       <Route path="/candidate/applications/:applicationId" element={<RequireRole role="CANDIDATE"><CandidateApplicationDetails /></RequireRole>} />
       <Route path="/hr" element={<RequireRole role="HR"><HrDashboard /></RequireRole>} />
@@ -106,12 +108,12 @@ function AppLayout() {
 
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <BrowserRouter>
+      <AuthProvider>
         <NavigationScrollManager />
         <AppLayout />
-      </BrowserRouter>
-    </AuthProvider>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 

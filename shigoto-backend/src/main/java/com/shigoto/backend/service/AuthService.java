@@ -111,7 +111,23 @@ public class AuthService {
         candidate.setFirstName(requireName(request.firstName(), "First name"));
         candidate.setLastName(requireName(request.lastName(), "Last name"));
         candidate.setGithubProfileUrl(normalizeGithubProfileUrl(request.githubProfileUrl()));
+        candidate.setCurrentTitle(normalizeOptionalProfileText(request.currentTitle(), "Current title"));
+        candidate.setDesiredRole(normalizeOptionalProfileText(request.desiredRole(), "Desired role"));
+        if (request.employmentType() == null) {
+            throw new IllegalArgumentException("Employment preference is required");
+        }
+        candidate.setEmploymentType(request.employmentType());
+        candidate.setStudent(request.student());
         return AuthenticatedUserResponseDTO.from(userRepository.save(candidate));
+    }
+
+    private String normalizeOptionalProfileText(String value, String fieldName) {
+        if (value == null || value.isBlank()) return null;
+        String trimmed = value.trim();
+        if (trimmed.length() > 100) {
+            throw new IllegalArgumentException(fieldName + " must not exceed 100 characters");
+        }
+        return trimmed;
     }
 
     private User findByEmail(String email) {

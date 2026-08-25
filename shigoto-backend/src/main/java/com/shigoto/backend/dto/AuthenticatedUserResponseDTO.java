@@ -2,6 +2,7 @@ package com.shigoto.backend.dto;
 
 import com.shigoto.backend.entity.Role;
 import com.shigoto.backend.entity.User;
+import com.shigoto.backend.entity.EmploymentType;
 
 public record AuthenticatedUserResponseDTO(
         Long id,
@@ -9,7 +10,11 @@ public record AuthenticatedUserResponseDTO(
         String lastName,
         String email,
         Role role,
-        String githubProfileUrl
+        String githubProfileUrl,
+        String currentTitle,
+        String desiredRole,
+        EmploymentType employmentType,
+        boolean student
 ) {
     public static AuthenticatedUserResponseDTO from(User user) {
         return new AuthenticatedUserResponseDTO(
@@ -18,7 +23,11 @@ public record AuthenticatedUserResponseDTO(
                 user.getLastName(),
                 user.getEmail(),
                 user.getRole(),
-                user.getGithubProfileUrl()
+                user.getGithubProfileUrl(),
+                user.getCurrentTitle(),
+                user.getDesiredRole(),
+                user.getEmploymentType(),
+                user.isStudent()
         );
     }
 }

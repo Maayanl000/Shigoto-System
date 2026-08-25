@@ -31,7 +31,6 @@ export default function PublicHeader() {
   const handleLogout = async () => {
     closeMenu();
     await logout();
-    navigate('/', { replace: true });
   };
   const goHome = () => {
     closeMenu();

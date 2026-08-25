@@ -34,6 +34,9 @@ public class InterviewService {
         // 2. שליפת המראיין (המשתמש) מהמערכת
         User interviewer = userRepository.findById(request.interviewerId())
                 .orElseThrow(() -> new RuntimeException("Interviewer not found with id: " + request.interviewerId()));
+        if (interviewer.getRole() != Role.INTERVIEWER) {
+            throw new IllegalArgumentException("Selected user is not an interviewer");
+        }
 
         // 3. בניית ישות הראיון בעזרת ה-Builder של Lombok
         Interview interview = Interview.builder()

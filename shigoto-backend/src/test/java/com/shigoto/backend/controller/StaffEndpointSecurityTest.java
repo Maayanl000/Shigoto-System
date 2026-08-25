@@ -1,0 +1,209 @@
+package com.shigoto.backend.controller;
+
+import com.shigoto.backend.config.SecurityConfig;
+import com.shigoto.backend.dto.StaffApplicationResponseDTO;
+import com.shigoto.backend.dto.ApplicationResponseDTO;
+import com.shigoto.backend.entity.ApplicationStatus;
+import com.shigoto.backend.entity.Role;
+import com.shigoto.backend.entity.User;
+import com.shigoto.backend.repository.UserRepository;
+import com.shigoto.backend.repository.JobRepository;
+import com.shigoto.backend.repository.CompanyRepository;
+import com.shigoto.backend.service.ApplicationService;
+import com.shigoto.backend.service.AuthService;
+import com.shigoto.backend.service.InterviewService;
+import com.shigoto.backend.service.JobService;
+import com.shigoto.backend.service.UserService;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.boot.security.autoconfigure.SecurityAutoConfiguration;
+import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterAutoConfiguration;
+import org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.List;
+
+import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+
+@WebMvcTest(controllers = {
+        ApplicationController.class,
+        AuthController.class,
+        UserController.class,
+        JobController.class,
+        InterviewController.class
+})
+@Import({
+        SecurityConfig.class,
+        SecurityAutoConfiguration.class,
+        ServletWebSecurityAutoConfiguration.class,
+        SecurityFilterAutoConfiguration.class
+})
+class StaffEndpointSecurityTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private ApplicationService applicationService;
+    @MockitoBean
+    private AuthService authService;
+    @MockitoBean
+    private UserService userService;
+    @MockitoBean
+    private JobService jobService;
+    @MockitoBean
+    private InterviewService interviewService;
+    @MockitoBean
+    private UserRepository userRepository;
+    @MockitoBean
+    private JobRepository jobRepository;
+    @MockitoBean
+    private CompanyRepository companyRepository;
+
+    @Test
+    void anonymousCannotListApplications() throws Exception {
+        mockMvc.perform(get("/api/applications"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/applications/mine"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void candidateCannotUseStaffApplicationEndpoints() throws Exception {
+        mockMvc.perform(get("/api/applications").with(user("candidate").roles("CANDIDATE")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/applications/candidate/2").with(user("candidate").roles("CANDIDATE")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/applications/1")
+                        .with(user("candidate").roles("CANDIDATE"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"REJECTED\",\"hrNotes\":\"private\"}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/api/applications/1")
+                        .with(user("candidate").roles("CANDIDATE"))
+                        .with(csrf()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void hrCanListApplications() throws Exception {
+        when(applicationService.getAllApplications()).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/applications").with(user("hr").roles("HR")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("[]"));
+    }
+
+    @Test
+    void candidateCannotUseOtherStaffEndpoints() throws Exception {
+        mockMvc.perform(get("/api/users").with(user("candidate").roles("CANDIDATE")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/jobs")
+                        .with(user("candidate").roles("CANDIDATE"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/interviews")
+                        .with(user("candidate").roles("CANDIDATE"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void staffApplicationResponseDoesNotSerializeInternalFieldsOrRelationships() throws Exception {
+        StaffApplicationResponseDTO response = new StaffApplicationResponseDTO(
+                1L, 2L, 3L, ApplicationStatus.REJECTED, "Internal HR note");
+        when(applicationService.updateApplicationStatus(1L, ApplicationStatus.REJECTED, "Internal HR note"))
+                .thenReturn(response);
+
+        mockMvc.perform(put("/api/applications/1")
+                        .with(user("hr").roles("HR"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"REJECTED\",\"hrNotes\":\"Internal HR note\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hrNotes").value("Internal HR note"))
+                .andExpect(jsonPath("$.password").doesNotExist())
+                .andExpect(jsonPath("$.cvUrl").doesNotExist())
+                .andExpect(jsonPath("$.candidate").doesNotExist())
+                .andExpect(jsonPath("$.job").doesNotExist());
+    }
+
+    @Test
+    void candidateCanReadMineButCannotReadAnotherCandidatesApplication() throws Exception {
+        User candidate = User.builder().id(2L).email("candidate@example.com").role(Role.CANDIDATE).build();
+        when(authService.getAuthenticatedCandidate(any())).thenReturn(candidate);
+        when(applicationService.getApplicationsForCandidate(candidate)).thenReturn(List.of());
+        when(applicationService.getOwnedApplicationById(9L, candidate))
+                .thenThrow(new org.springframework.security.access.AccessDeniedException("not owned"));
+
+        mockMvc.perform(get("/api/applications/mine").with(user("candidate").roles("CANDIDATE")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("[]"));
+        mockMvc.perform(get("/api/applications/9").with(user("candidate").roles("CANDIDATE")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Access denied"));
+    }
+
+    @Test
+    void candidateStateChangeRequiresCsrfAndSucceedsWithToken() throws Exception {
+        User candidate = User.builder().id(2L).email("candidate@example.com").role(Role.CANDIDATE).build();
+        ApplicationResponseDTO response = new ApplicationResponseDTO(
+                1L, 2L, 3L, "Developer", "Shigoto", "Remote", "Cover",
+                ApplicationStatus.TASK_SUBMITTED, null, null, "https://github.com/user/repo");
+        when(authService.getAuthenticatedCandidate(any())).thenReturn(candidate);
+        when(applicationService.submitTask(1L, "https://github.com/user/repo", candidate)).thenReturn(response);
+
+        var request = put("/api/applications/1/task-submission")
+                .with(user("candidate").roles("CANDIDATE"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"repositoryUrl\":\"https://github.com/user/repo\"}");
+        mockMvc.perform(request).andExpect(status().isForbidden());
+
+        mockMvc.perform(put("/api/applications/1/task-submission")
+                        .with(user("candidate").roles("CANDIDATE"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"repositoryUrl\":\"https://github.com/user/repo\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("TASK_SUBMITTED"));
+    }
+
+    @Test
+    void invalidEmploymentTypeIsRejectedByEnumBinding() throws Exception {
+        mockMvc.perform(put("/api/auth/me/profile")
+                        .with(user("candidate").roles("CANDIDATE"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "firstName": "Dana",
+                                  "lastName": "Cohen",
+                                  "githubProfileUrl": "https://github.com/dana",
+                                  "currentTitle": "Developer",
+                                  "desiredRole": "Backend Developer",
+                                  "employmentType": "CONTRACT",
+                                  "student": false
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+}

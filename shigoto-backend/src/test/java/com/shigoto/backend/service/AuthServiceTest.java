@@ -5,6 +5,7 @@ import com.shigoto.backend.dto.CandidateProfileUpdateRequestDTO;
 import com.shigoto.backend.dto.LoginRequestDTO;
 import com.shigoto.backend.dto.RegisterRequestDTO;
 import com.shigoto.backend.entity.Role;
+import com.shigoto.backend.entity.EmploymentType;
 import com.shigoto.backend.entity.User;
 import com.shigoto.backend.exception.DuplicateEmailException;
 import com.shigoto.backend.repository.UserRepository;
@@ -150,7 +151,8 @@ class AuthServiceTest {
         when(userRepository.findByEmail("dana@example.com")).thenReturn(Optional.of(candidate));
         when(userRepository.save(candidate)).thenReturn(candidate);
         CandidateProfileUpdateRequestDTO request = new CandidateProfileUpdateRequestDTO(
-                " Dana ", " Cohen ", " https://github.com/dana ");
+                " Dana ", " Cohen ", " https://github.com/dana ",
+                " Junior Java Developer ", " Backend Developer ", EmploymentType.FULL_TIME, true);
 
         var response = authService.updateCandidateProfile(request, authentication);
 
@@ -158,6 +160,10 @@ class AuthServiceTest {
         assertEquals("Dana", response.firstName());
         assertEquals("Cohen", response.lastName());
         assertEquals("https://github.com/dana", response.githubProfileUrl());
+        assertEquals("Junior Java Developer", response.currentTitle());
+        assertEquals("Backend Developer", response.desiredRole());
+        assertEquals(EmploymentType.FULL_TIME, response.employmentType());
+        assertTrue(response.student());
         verify(userRepository).save(candidate);
         assertFalse(Arrays.stream(CandidateProfileUpdateRequestDTO.class.getRecordComponents())
                 .anyMatch(component -> component.getName().toLowerCase().contains("id")));
@@ -171,10 +177,12 @@ class AuthServiceTest {
         when(userRepository.findByEmail("dana@example.com")).thenReturn(Optional.of(candidate));
 
         assertThrows(IllegalArgumentException.class, () -> authService.updateCandidateProfile(
-                new CandidateProfileUpdateRequestDTO("Dana", "Cohen", "https://example.com/dana"),
+                new CandidateProfileUpdateRequestDTO("Dana", "Cohen", "https://example.com/dana",
+                        null, null, EmploymentType.FULL_TIME, false),
                 authentication));
         assertThrows(IllegalArgumentException.class, () -> authService.updateCandidateProfile(
-                new CandidateProfileUpdateRequestDTO("Dana2", "Cohen", "https://github.com/dana"),
+                new CandidateProfileUpdateRequestDTO("Dana2", "Cohen", "https://github.com/dana",
+                        null, null, EmploymentType.FULL_TIME, false),
                 authentication));
         verify(userRepository, never()).save(candidate);
     }
@@ -194,6 +202,10 @@ class AuthServiceTest {
     void safeResponseHasNoPasswordComponent() {
         assertTrue(Arrays.stream(AuthenticatedUserResponseDTO.class.getRecordComponents())
                 .anyMatch(component -> component.getName().equals("githubProfileUrl")));
+        assertTrue(Arrays.stream(AuthenticatedUserResponseDTO.class.getRecordComponents())
+                .anyMatch(component -> component.getName().equals("employmentType")));
+        assertTrue(Arrays.stream(AuthenticatedUserResponseDTO.class.getRecordComponents())
+                .anyMatch(component -> component.getName().equals("student")));
         assertFalse(Arrays.stream(AuthenticatedUserResponseDTO.class.getRecordComponents())
                 .anyMatch(component -> component.getName().toLowerCase().contains("password")));
     }

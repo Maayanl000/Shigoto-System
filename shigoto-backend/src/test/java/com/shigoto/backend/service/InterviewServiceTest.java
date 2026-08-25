@@ -6,6 +6,7 @@ import com.shigoto.backend.entity.InterviewStatus;
 import com.shigoto.backend.entity.InterviewType;
 import com.shigoto.backend.entity.User;
 import com.shigoto.backend.entity.Role;
+import com.shigoto.backend.dto.InterviewRequestDTO;
 import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.ApplicationRepository;
 import com.shigoto.backend.repository.InterviewRepository;
@@ -30,14 +31,16 @@ class InterviewServiceTest {
 
     private InterviewRepository interviewRepository;
     private ApplicationRepository applicationRepository;
+    private UserRepository userRepository;
     private InterviewService interviewService;
 
     @BeforeEach
     void setUp() {
         interviewRepository = mock(InterviewRepository.class);
         applicationRepository = mock(ApplicationRepository.class);
+        userRepository = mock(UserRepository.class);
         interviewService = new InterviewService(
-                interviewRepository, applicationRepository, mock(UserRepository.class));
+                interviewRepository, applicationRepository, userRepository);
     }
 
     @Test
@@ -90,6 +93,18 @@ class InterviewServiceTest {
         assertThrows(AccessDeniedException.class,
                 () -> interviewService.getCandidateInterviews(7L, candidate(4L)));
         verify(interviewRepository, never()).findByApplicationIdOrderByScheduledAtAsc(7L);
+    }
+
+    @Test
+    void schedulingRejectsAUserWhoIsNotAnInterviewer() {
+        Application application = Application.builder().id(7L).candidate(candidate(3L)).build();
+        when(applicationRepository.findById(7L)).thenReturn(Optional.of(application));
+        when(userRepository.findById(4L)).thenReturn(Optional.of(candidate(4L)));
+        InterviewRequestDTO request = new InterviewRequestDTO(
+                7L, 4L, LocalDateTime.now().plusDays(1), "https://meet.example/test", InterviewType.TECHNICAL);
+
+        assertThrows(IllegalArgumentException.class, () -> interviewService.scheduleInterview(request));
+        verify(interviewRepository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
     private Interview interview(

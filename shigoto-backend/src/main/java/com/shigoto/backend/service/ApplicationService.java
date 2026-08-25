@@ -1,6 +1,7 @@
 package com.shigoto.backend.service;
 
 import com.shigoto.backend.dto.ApplicationResponseDTO;
+import com.shigoto.backend.dto.StaffApplicationResponseDTO;
 import com.shigoto.backend.entity.Application;
 import com.shigoto.backend.entity.ApplicationStatus; // הנה ה-import הנקי שהוספנו!
 import com.shigoto.backend.entity.JobStatus;
@@ -72,7 +73,8 @@ public class ApplicationService {
 
 
     // פונקציית העדכון המעודכנת והנקייה שלנו
-    public Application updateApplicationStatus(Long applicationId, ApplicationStatus newStatus, String hrNotes) {
+    public StaffApplicationResponseDTO updateApplicationStatus(
+            Long applicationId, ApplicationStatus newStatus, String hrNotes) {
 
         Application application = applicationRepository.findById(applicationId)
                 .orElseThrow(() -> new IllegalArgumentException("Application not found with id: " + applicationId));
@@ -84,7 +86,7 @@ public class ApplicationService {
             application.setHrNotes(hrNotes);
         }
 
-        return applicationRepository.save(application);
+        return StaffApplicationResponseDTO.from(applicationRepository.save(application));
     }
 
     // פונקציה למחיקת מועמדות לפי ID
@@ -98,14 +100,14 @@ public class ApplicationService {
     }
     // הוסיפי את הפונקציה הזו בתוך ApplicationService
 
-    public List<ApplicationResponseDTO> getAllApplications() {
+    public List<StaffApplicationResponseDTO> getAllApplications() {
         return applicationRepository.findAll()
                 .stream()
-                .map(this::toResponseDTO)
+                .map(StaffApplicationResponseDTO::from)
                 .toList();
     }
 
-    public List<ApplicationResponseDTO> getApplicationsByCandidate(Long candidateId) {
+    public List<StaffApplicationResponseDTO> getApplicationsByCandidate(Long candidateId) {
         var candidate = userRepository.findById(candidateId)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidate not found with id: " + candidateId));
 
@@ -115,7 +117,7 @@ public class ApplicationService {
 
         return applicationRepository.findByCandidateIdOrderByAppliedAtDesc(candidateId)
                 .stream()
-                .map(this::toResponseDTO)
+                .map(StaffApplicationResponseDTO::from)
                 .toList();
     }
 

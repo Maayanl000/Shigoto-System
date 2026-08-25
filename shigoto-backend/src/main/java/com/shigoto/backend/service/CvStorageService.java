@@ -1,6 +1,7 @@
 package com.shigoto.backend.service;
 
 import com.shigoto.backend.exception.CvStorageException;
+import com.shigoto.backend.exception.CvTooLargeException;
 import com.shigoto.backend.exception.ResourceNotFoundException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
@@ -90,7 +91,7 @@ public class CvStorageService {
     private void validate(MultipartFile file) {
         if (file == null) throw new IllegalArgumentException("CV file is required");
         if (file.isEmpty() || file.getSize() == 0) throw new IllegalArgumentException("CV file must not be empty");
-        if (file.getSize() > MAX_CV_SIZE) throw new IllegalArgumentException("CV file must not exceed 5 MB");
+        if (file.getSize() > MAX_CV_SIZE) throw new CvTooLargeException("CV file must not exceed 5 MB");
 
         String originalFilename = file.getOriginalFilename();
         if (originalFilename == null || !originalFilename.toLowerCase(Locale.ROOT).endsWith(".pdf")) {

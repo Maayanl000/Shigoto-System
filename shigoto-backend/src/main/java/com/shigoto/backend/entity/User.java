@@ -28,6 +28,18 @@ public class User {
 
     private String githubProfileUrl;
 
+    @Column(length = 100)
+    private String currentTitle;
+
+    @Column(length = 100)
+    private String desiredRole;
+
+    @Enumerated(EnumType.STRING)
+    private EmploymentType employmentType;
+
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean student;
+
     @Column(nullable = false)
     @JsonIgnore
     private String password;

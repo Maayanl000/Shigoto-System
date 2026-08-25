@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { AppBar, Avatar, Box, Chip, Divider, Drawer, IconButton, List, ListItemButton, ListItemIcon, ListItemText, Stack, Toolbar, Tooltip, Typography } from '@mui/material';
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined';
 import ViewKanbanOutlinedIcon from '@mui/icons-material/ViewKanbanOutlined';
@@ -12,6 +12,7 @@ import ContactSupportOutlinedIcon from '@mui/icons-material/ContactSupportOutlin
 import ChevronLeftRoundedIcon from '@mui/icons-material/ChevronLeftRounded';
 import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
+import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded';
 import { useAuth } from '../auth/authContext';
 
 const expandedWidth = 248;
@@ -23,6 +24,7 @@ const areaConfig = {
     initials: 'CA',
     links: [
       { label: 'Overview', to: '/candidate', icon: <DashboardOutlinedIcon /> },
+      { label: 'My Profile', to: '/candidate/profile', icon: <PersonOutlineRoundedIcon /> },
       { label: 'Browse jobs', to: '/jobs', icon: <WorkOutlineRoundedIcon /> },
     ],
   },
@@ -53,7 +55,6 @@ function getArea(pathname) {
 
 export default function DashboardShell({ children }) {
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const { pathname } = useLocation();
@@ -63,11 +64,7 @@ export default function DashboardShell({ children }) {
   const userInitials = `${user?.firstName?.[0] || ''}${user?.lastName?.[0] || ''}`.toUpperCase() || config.initials;
 
   const handleLogout = async () => {
-    try {
-      await logout();
-    } finally {
-      navigate('/', { replace: true });
-    }
+    await logout();
   };
 
   const drawerContent = (isCollapsed) => {

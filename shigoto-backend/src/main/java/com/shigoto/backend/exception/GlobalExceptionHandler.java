@@ -59,6 +59,11 @@ public class GlobalExceptionHandler {
         return buildErrorResponse("CV file must not exceed 5 MB", HttpStatus.PAYLOAD_TOO_LARGE);
     }
 
+    @ExceptionHandler(CvTooLargeException.class)
+    public ResponseEntity<ErrorResponseDTO> handleCvTooLarge(CvTooLargeException ex) {
+        return buildErrorResponse("CV file must not exceed 5 MB", HttpStatus.PAYLOAD_TOO_LARGE);
+    }
+
     @ExceptionHandler(MissingServletRequestPartException.class)
     public ResponseEntity<ErrorResponseDTO> handleMissingMultipartPart(MissingServletRequestPartException ex) {
         return buildErrorResponse("CV file is required", HttpStatus.BAD_REQUEST);

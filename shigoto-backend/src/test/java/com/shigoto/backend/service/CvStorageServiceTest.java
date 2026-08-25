@@ -1,6 +1,7 @@
 package com.shigoto.backend.service;
 
 import com.shigoto.backend.exception.ResourceNotFoundException;
+import com.shigoto.backend.exception.CvTooLargeException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.web.MockMultipartFile;
@@ -33,7 +34,7 @@ class CvStorageServiceTest {
     void rejectsOversizedFile() {
         byte[] oversized = new byte[(5 * 1024 * 1024) + 1];
         System.arraycopy("%PDF-".getBytes(), 0, oversized, 0, 5);
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(CvTooLargeException.class,
                 () -> service().store(pdf("resume.pdf", oversized)));
     }
 

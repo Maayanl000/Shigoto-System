@@ -27,6 +27,6 @@ public class JobController {
     @GetMapping
     public ResponseEntity<List<Job>> getAllJobs() {
         // שליפת כל המשרות הקיימות במערכת
-        return ResponseEntity.ok(jobService.getAllJobs());
+        return ResponseEntity.ok(jobService.getOpenJobs());
     }
 }

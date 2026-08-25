@@ -1,8 +1,8 @@
 package com.shigoto.backend.controller;
 
 import com.shigoto.backend.dto.ApplicationResponseDTO;
+import com.shigoto.backend.dto.StaffApplicationResponseDTO;
 import com.shigoto.backend.dto.TaskSubmissionRequestDTO;
-import com.shigoto.backend.entity.Application;
 import com.shigoto.backend.entity.ApplicationStatus;
 import com.shigoto.backend.entity.User;
 import com.shigoto.backend.service.ApplicationService;
@@ -43,7 +43,7 @@ public class ApplicationController {
     }
 
     @GetMapping
-    public ResponseEntity<List<ApplicationResponseDTO>> getAllApplications() {
+    public ResponseEntity<List<StaffApplicationResponseDTO>> getAllApplications() {
         return ResponseEntity.ok(applicationService.getAllApplications());
     }
 
@@ -54,7 +54,7 @@ public class ApplicationController {
     }
 
     @GetMapping("/candidate/{candidateId}")
-    public ResponseEntity<List<ApplicationResponseDTO>> getApplicationsByCandidate(
+    public ResponseEntity<List<StaffApplicationResponseDTO>> getApplicationsByCandidate(
             @PathVariable Long candidateId) {
         return ResponseEntity.ok(applicationService.getApplicationsByCandidate(candidateId));
     }
@@ -97,7 +97,7 @@ public class ApplicationController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Application> updateApplication(
+    public ResponseEntity<StaffApplicationResponseDTO> updateApplication(
             @PathVariable Long id,
             @RequestBody UpdateApplicationRequest request) {
         return ResponseEntity.ok(applicationService.updateApplicationStatus(

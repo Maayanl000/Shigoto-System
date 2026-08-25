@@ -1,6 +1,7 @@
 package com.shigoto.backend.service;
 
 import com.shigoto.backend.entity.Job;
+import com.shigoto.backend.entity.JobStatus;
 import com.shigoto.backend.repository.JobRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,7 +22,7 @@ public class JobService {
     }
 
     // פונקציה לשליפת כל המשרות (ישמש אותנו לדף הבית של האורחים/מועמדים)
-    public List<Job> getAllJobs() {
-        return jobRepository.findAll();
+    public List<Job> getOpenJobs() {
+        return jobRepository.findByStatus(JobStatus.OPEN);
     }
 }
