@@ -13,8 +13,11 @@ import com.shigoto.backend.repository.JobRepository;
 import com.shigoto.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.core.io.Resource;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -30,8 +33,10 @@ public class ApplicationService {
     private final ApplicationRepository applicationRepository;
     private final UserRepository userRepository;
     private final JobRepository jobRepository;
+    private final CvStorageService cvStorageService;
 
-    public Application createApplication(User candidate, Long jobId, String cvUrl, String coverLetter) {
+    @Transactional
+    public ApplicationResponseDTO createApplication(User candidate, Long jobId, String coverLetter, MultipartFile cv) {
         if (candidate.getRole() != Role.CANDIDATE) {
             throw new IllegalArgumentException("Referenced user is not a candidate");
         }
@@ -47,17 +52,21 @@ public class ApplicationService {
             throw new DuplicateApplicationException("Candidate has already applied for this job");
         }
 
-        Application application = Application.builder()
-                .candidate(candidate)
-                .job(job)
-                .cvUrl(cvUrl)
-                .coverLetter(coverLetter)
-                .build();
-
+        String storageKey = cvStorageService.store(cv);
         try {
-            return applicationRepository.save(application);
+            Application application = Application.builder()
+                    .candidate(candidate)
+                    .job(job)
+                    .cvUrl(storageKey)
+                    .coverLetter(coverLetter)
+                    .build();
+            return toResponseDTO(applicationRepository.saveAndFlush(application));
         } catch (DataIntegrityViolationException ex) {
+            deleteStoredCvAfterFailedApplication(storageKey);
             throw new DuplicateApplicationException("Candidate has already applied for this job");
+        } catch (RuntimeException ex) {
+            deleteStoredCvAfterFailedApplication(storageKey);
+            throw ex;
         }
     }
 
@@ -80,13 +89,12 @@ public class ApplicationService {
 
     // פונקציה למחיקת מועמדות לפי ID
     public void deleteApplication(Long applicationId) {
-        // 1. נבדוק קודם אם המועמדות קיימת בכלל
-        if (!applicationRepository.existsById(applicationId)) {
-            throw new IllegalArgumentException("Application not found with id: " + applicationId);
-        }
-
-        // 2. מחיקה ממסד הנתונים
-        applicationRepository.deleteById(applicationId);
+        Application application = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Application not found with id: " + applicationId));
+        applicationRepository.delete(application);
+        applicationRepository.flush();
+        cvStorageService.delete(application.getCvUrl());
     }
     // הוסיפי את הפונקציה הזו בתוך ApplicationService
 
@@ -121,6 +129,12 @@ public class ApplicationService {
 
     public ApplicationResponseDTO getOwnedApplicationById(Long applicationId, User candidate) {
         return toResponseDTO(findOwnedApplication(applicationId, candidate));
+    }
+
+    public CvDownload getOwnedCv(Long applicationId, User candidate) {
+        Application application = findOwnedApplication(applicationId, candidate);
+        Resource resource = cvStorageService.load(application.getCvUrl());
+        return new CvDownload("cv-application-" + applicationId + ".pdf", resource);
     }
 
     public ApplicationResponseDTO submitTask(Long applicationId, String repositoryUrl, User candidate) {
@@ -163,6 +177,16 @@ public class ApplicationService {
             throw new AccessDeniedException("Candidate access is required");
         }
     }
+
+    private void deleteStoredCvAfterFailedApplication(String storageKey) {
+        try {
+            cvStorageService.delete(storageKey);
+        } catch (RuntimeException ignored) {
+            // Preserve the original database error; storage cleanup can be investigated separately.
+        }
+    }
+
+    public record CvDownload(String downloadFilename, Resource resource) {}
 
     private String validateRepositoryUrl(String repositoryUrl) {
         if (repositoryUrl == null || repositoryUrl.isBlank()) {

@@ -3,12 +3,13 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Alert, Box, Button, Card, CardContent, Chip, Divider, Grid, Stack, TextField, Typography } from '@mui/material';
 import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined';
 import { useAuth } from '../auth/authContext';
+import { isValidGithubProfile } from '../utils/githubProfile';
 
 export default function Register() {
   const { register } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [values, setValues] = useState({ firstName: '', lastName: '', email: '', password: '' });
+  const [values, setValues] = useState({ firstName: '', lastName: '', email: '', password: '', githubProfileUrl: '' });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -32,6 +33,10 @@ export default function Register() {
       setError('Password must be at least 8 characters.');
       return;
     }
+    if (!isValidGithubProfile(values.githubProfileUrl)) {
+      setError('Enter a valid GitHub profile URL, such as https://github.com/username.');
+      return;
+    }
 
     setSubmitting(true);
     setError('');
@@ -41,6 +46,7 @@ export default function Register() {
         lastName: values.lastName.trim(),
         email: values.email.trim(),
         password: values.password,
+        githubProfileUrl: values.githubProfileUrl.trim(),
       });
       const returnPath = typeof location.state?.from === 'string' ? location.state.from : '/candidate';
       navigate(returnPath, { replace: true });
@@ -75,6 +81,7 @@ export default function Register() {
             <Grid size={{ xs: 12, sm: 6 }}><TextField label="Last name" value={values.lastName} onChange={handleChange('lastName')} autoComplete="family-name" required disabled={submitting} fullWidth /></Grid>
           </Grid>
           <TextField label="Email" type="email" value={values.email} onChange={handleChange('email')} autoComplete="email" required disabled={submitting} fullWidth />
+          <TextField label="GitHub Profile URL" type="url" value={values.githubProfileUrl} onChange={handleChange('githubProfileUrl')} placeholder="https://github.com/username" autoComplete="url" required disabled={submitting} fullWidth />
           <TextField label="Password" type="password" value={values.password} onChange={handleChange('password')} helperText="Use at least 8 characters." autoComplete="new-password" required disabled={submitting} fullWidth />
           <Button type="submit" variant="contained" disabled={submitting} fullWidth>{submitting ? 'Creating account…' : 'Create account'}</Button>
           <Divider />

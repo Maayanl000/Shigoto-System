@@ -8,7 +8,8 @@ public record AuthenticatedUserResponseDTO(
         String firstName,
         String lastName,
         String email,
-        Role role
+        Role role,
+        String githubProfileUrl
 ) {
     public static AuthenticatedUserResponseDTO from(User user) {
         return new AuthenticatedUserResponseDTO(
@@ -16,7 +17,8 @@ public record AuthenticatedUserResponseDTO(
                 user.getFirstName(),
                 user.getLastName(),
                 user.getEmail(),
-                user.getRole()
+                user.getRole(),
+                user.getGithubProfileUrl()
         );
     }
 }

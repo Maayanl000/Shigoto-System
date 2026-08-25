@@ -14,6 +14,9 @@ import com.shigoto.backend.repository.JobRepository;
 import com.shigoto.backend.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.time.LocalDateTime;
@@ -23,6 +26,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -31,12 +35,14 @@ class ApplicationServiceTest {
 
     private ApplicationRepository applicationRepository;
     private ApplicationService applicationService;
+    private CvStorageService cvStorageService;
 
     @BeforeEach
     void setUp() {
         applicationRepository = mock(ApplicationRepository.class);
+        cvStorageService = mock(CvStorageService.class);
         applicationService = new ApplicationService(
-                applicationRepository, mock(UserRepository.class), mock(JobRepository.class));
+                applicationRepository, mock(UserRepository.class), mock(JobRepository.class), cvStorageService);
     }
 
     @Test
@@ -128,23 +134,76 @@ class ApplicationServiceTest {
     @Test
     void createsApplicationForAuthenticatedCandidateAndPreservesDuplicateProtection() {
         User candidate = candidate(3L);
-        Job job = Job.builder().id(2L).status(JobStatus.OPEN).build();
+        Job job = Job.builder().id(2L).title("Developer").location("Remote")
+                .company(Company.builder().name("Example Company").build())
+                .status(JobStatus.OPEN).build();
         JobRepository jobRepository = mock(JobRepository.class);
         applicationService = new ApplicationService(
-                applicationRepository, mock(UserRepository.class), jobRepository);
+                applicationRepository, mock(UserRepository.class), jobRepository, cvStorageService);
         when(jobRepository.findById(2L)).thenReturn(Optional.of(job));
         when(applicationRepository.existsByCandidateIdAndJobId(3L, 2L)).thenReturn(false);
-        when(applicationRepository.save(org.mockito.ArgumentMatchers.any(Application.class)))
+        when(cvStorageService.store(any())).thenReturn("123e4567-e89b-12d3-a456-426614174000.pdf");
+        when(applicationRepository.saveAndFlush(any(Application.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
+        MockMultipartFile cv = validCv();
 
-        Application created = applicationService.createApplication(candidate, 2L, null, "Cover note");
+        var created = applicationService.createApplication(candidate, 2L, "Cover note", cv);
 
-        assertEquals(candidate, created.getCandidate());
-        assertEquals("Cover note", created.getCoverLetter());
+        assertEquals(candidate.getId(), created.candidateId());
+        assertEquals("Cover note", created.coverLetter());
+        verify(applicationRepository).saveAndFlush(org.mockito.ArgumentMatchers.argThat(application ->
+                "123e4567-e89b-12d3-a456-426614174000.pdf".equals(application.getCvUrl())));
 
         when(applicationRepository.existsByCandidateIdAndJobId(3L, 2L)).thenReturn(true);
         assertThrows(DuplicateApplicationException.class,
-                () -> applicationService.createApplication(candidate, 2L, null, "Cover note"));
+                () -> applicationService.createApplication(candidate, 2L, "Cover note", cv));
+    }
+
+    @Test
+    void deletesStoredCvWhenApplicationDatabaseSaveFails() {
+        User candidate = candidate(3L);
+        Job job = Job.builder().id(2L).status(JobStatus.OPEN).build();
+        JobRepository jobRepository = mock(JobRepository.class);
+        applicationService = new ApplicationService(
+                applicationRepository, mock(UserRepository.class), jobRepository, cvStorageService);
+        String storageKey = "123e4567-e89b-12d3-a456-426614174000.pdf";
+        when(jobRepository.findById(2L)).thenReturn(Optional.of(job));
+        when(cvStorageService.store(any())).thenReturn(storageKey);
+        when(applicationRepository.saveAndFlush(any(Application.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate"));
+
+        assertThrows(DuplicateApplicationException.class,
+                () -> applicationService.createApplication(candidate, 2L, "Cover", validCv()));
+
+        verify(cvStorageService).delete(storageKey);
+    }
+
+    @Test
+    void candidateCanDownloadOwnCvButNotAnotherCandidatesCv() {
+        Application application = assignedApplication(LocalDateTime.now().plusHours(1));
+        application.setCvUrl("123e4567-e89b-12d3-a456-426614174000.pdf");
+        when(applicationRepository.findById(1L)).thenReturn(Optional.of(application));
+        when(cvStorageService.load(application.getCvUrl()))
+                .thenReturn(new ByteArrayResource("%PDF-test".getBytes()));
+
+        var download = applicationService.getOwnedCv(1L, application.getCandidate());
+
+        assertEquals("cv-application-1.pdf", download.downloadFilename());
+        assertThrows(AccessDeniedException.class,
+                () -> applicationService.getOwnedCv(1L, candidate(4L)));
+    }
+
+    @Test
+    void deletingApplicationAlsoDeletesStoredCv() {
+        Application application = assignedApplication(LocalDateTime.now().plusHours(1));
+        application.setCvUrl("123e4567-e89b-12d3-a456-426614174000.pdf");
+        when(applicationRepository.findById(1L)).thenReturn(Optional.of(application));
+
+        applicationService.deleteApplication(1L);
+
+        verify(applicationRepository).delete(application);
+        verify(applicationRepository).flush();
+        verify(cvStorageService).delete(application.getCvUrl());
     }
 
     @Test
@@ -172,5 +231,10 @@ class ApplicationServiceTest {
 
     private User candidate(Long id) {
         return User.builder().id(id).role(Role.CANDIDATE).build();
+    }
+
+    private MockMultipartFile validCv() {
+        return new MockMultipartFile(
+                "cv", "resume.pdf", "application/pdf", "%PDF-1.4\ntest".getBytes());
     }
 }

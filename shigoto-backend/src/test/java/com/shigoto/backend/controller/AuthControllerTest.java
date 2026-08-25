@@ -27,7 +27,7 @@ class AuthControllerTest {
         Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
                 "candidate@example.com", null, List.of());
         AuthenticatedUserResponseDTO user = new AuthenticatedUserResponseDTO(
-                2L, "Maya", "Levi", "candidate@example.com", Role.CANDIDATE);
+                2L, "Maya", "Levi", "candidate@example.com", Role.CANDIDATE, null);
         when(authService.authenticate(request)).thenReturn(authentication);
         when(authService.getAuthenticatedUser(authentication)).thenReturn(user);
         MockHttpServletRequest httpRequest = new MockHttpServletRequest();

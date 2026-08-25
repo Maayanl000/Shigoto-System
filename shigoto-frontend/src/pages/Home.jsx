@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, Typography, Grid, Card, CardContent, CardActions, Button, Chip, Box, CircularProgress, Container, Divider, Drawer, IconButton, InputAdornment, Stack, TextField } from '@mui/material';
 import WorkIcon from '@mui/icons-material/Work';
@@ -7,6 +7,7 @@ import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import ApplicationDialog from '../components/ApplicationDialog';
+import ProfileCompletionDialog from '../components/ProfileCompletionDialog';
 import WorkspaceShowcase from '../components/WorkspaceShowcase';
 import api from '../services/api';
 import professionalNetworkImage from '../assets/ChatGPT Image Aug 22, 2026, 05_35_31 PM.png';
@@ -19,7 +20,16 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [selectedJob, setSelectedJob] = useState(null);
   const [applicationJob, setApplicationJob] = useState(null);
+  const [profileCompletionJob, setProfileCompletionJob] = useState(null);
   const [applyMessage, setApplyMessage] = useState('');
+  const [candidateApplicationState, setCandidateApplicationState] = useState({ userId: null, applications: [] });
+  const applicationsLoading = user?.role === 'CANDIDATE' && candidateApplicationState.userId !== user.id;
+
+  const applicationByJobId = useMemo(() => {
+    if (user?.role !== 'CANDIDATE' || candidateApplicationState.userId !== user.id) return new Map();
+    return new Map(candidateApplicationState.applications.map((application) => [String(application.jobId), application]));
+  }, [candidateApplicationState, user]);
+  const selectedApplication = selectedJob ? applicationByJobId.get(String(selectedJob.id)) : null;
 
   const handleApply = () => {
     if (!user) {
@@ -31,10 +41,31 @@ export default function Home() {
       setApplyMessage('Job applications are available to Candidate accounts only.');
       return;
     }
+    if (!user.githubProfileUrl) {
+      setProfileCompletionJob(selectedJob);
+      setSelectedJob(null);
+      setApplyMessage('');
+      return;
+    }
     setApplicationJob(selectedJob);
     setSelectedJob(null);
     setApplyMessage('');
   };
+
+  useEffect(() => {
+    if (authLoading || user?.role !== 'CANDIDATE') return;
+
+    let active = true;
+    api.get('/applications/mine')
+      .then((response) => {
+        if (active) setCandidateApplicationState({ userId: user.id, applications: response.data });
+      })
+      .catch(() => {
+        if (active) setCandidateApplicationState({ userId: user.id, applications: [] });
+      });
+
+    return () => { active = false; };
+  }, [authLoading, user]);
 
   // שליפת המשרות מהשרת בעת טעינת העמוד
   useEffect(() => {
@@ -149,13 +180,18 @@ export default function Home() {
             </Box>
           ) : (
             <Grid container spacing={2.5}>
-              {jobs.map((job) => (
+              {jobs.map((job) => {
+                const existingApplication = applicationByJobId.get(String(job.id));
+                return (
                 <Grid size={{ xs: 12, md: 6, lg: 4 }} key={job.id}>
-                  <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease', '&:hover': { transform: 'translateY(-3px)', borderColor: 'secondary.main', boxShadow: '0 12px 30px rgba(16,35,61,0.08)' } }}>
+                  <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', bgcolor: existingApplication ? '#f2f8f8' : 'background.paper', borderColor: existingApplication ? 'rgba(8,127,140,0.38)' : 'divider', boxShadow: existingApplication ? '0 6px 20px rgba(8,127,140,0.08)' : undefined, transition: 'transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease', '&:hover': { transform: 'translateY(-3px)', borderColor: 'secondary.main', boxShadow: '0 12px 30px rgba(16,35,61,0.08)' } }}>
                     <CardContent>
                       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2} sx={{ mb: 2.5 }}>
                         <Chip label={job.department || 'Technology'} color="secondary" size="small" sx={{ bgcolor: 'secondary.light', color: 'secondary.dark' }} />
-                        <Chip label={job.type || 'Full-time'} size="small" variant="outlined" />
+                        <Stack direction="row" spacing={1}>
+                          {existingApplication && <Chip label="Applied" size="small" color="success" />}
+                          <Chip label={job.type || 'Full-time'} size="small" variant="outlined" />
+                        </Stack>
                       </Stack>
                       <Typography variant="h6" component="h3" sx={{ mb: 1 }}>{job.title}</Typography>
                       <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 2, color: 'text.secondary' }}>
@@ -168,7 +204,8 @@ export default function Home() {
                     </CardActions>
                   </Card>
                 </Grid>
-              ))}
+                );
+              })}
             </Grid>
           )}
         </Container>
@@ -195,10 +232,44 @@ export default function Home() {
           <Typography color="text.secondary" sx={{ lineHeight: 1.8 }}>Candidates may move through application review, a home task, and technical interviews as appropriate for the role.</Typography>
           <Box sx={{ mt: 4, p: 2, bgcolor: 'secondary.light', borderRadius: 1.5 }}><Typography variant="caption" color="secondary.dark" fontWeight={700}>Preview content — detailed backend job data is not connected here.</Typography></Box>
           {applyMessage && <Alert severity="info" sx={{ mt: 2 }}>{applyMessage}</Alert>}
-          <Button variant="contained" fullWidth sx={{ mt: 3 }} onClick={handleApply} disabled={authLoading}>Apply to this role</Button>
+          {user?.role === 'CANDIDATE' && applicationsLoading ? (
+            <Button variant="contained" fullWidth sx={{ mt: 3 }} disabled>Checking application status…</Button>
+          ) : selectedApplication ? (
+            <Button
+              variant="contained"
+              fullWidth
+              sx={{ mt: 3 }}
+              onClick={() => navigate(`/candidate/applications/${selectedApplication.id}`)}
+            >
+              View application
+            </Button>
+          ) : (
+            <Button variant="contained" fullWidth sx={{ mt: 3 }} onClick={handleApply} disabled={authLoading}>Apply to this role</Button>
+          )}
         </Box>
       </Drawer>
-      <ApplicationDialog open={Boolean(applicationJob)} job={applicationJob} onClose={() => setApplicationJob(null)} />
+      <ProfileCompletionDialog
+        open={Boolean(profileCompletionJob)}
+        onClose={() => setProfileCompletionJob(null)}
+        onSaved={() => {
+          setApplicationJob(profileCompletionJob);
+          setProfileCompletionJob(null);
+        }}
+      />
+      <ApplicationDialog
+        open={Boolean(applicationJob)}
+        job={applicationJob}
+        onClose={() => setApplicationJob(null)}
+        onSubmitted={(application) => {
+          setCandidateApplicationState((current) => ({
+            userId: user.id,
+            applications: [
+              application,
+              ...current.applications.filter((item) => String(item.jobId) !== String(application.jobId)),
+            ],
+          }));
+        }}
+      />
     </Box>
   );
 }

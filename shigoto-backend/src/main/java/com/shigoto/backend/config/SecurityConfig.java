@@ -56,10 +56,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/jobs", "/api/jobs/**").permitAll()
                         .requestMatchers("/api/auth/me", "/api/auth/logout").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/auth/me/profile").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/applications").authenticated()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/applications/mine",
                                 "/api/applications/{applicationId}",
+                                "/api/applications/{applicationId}/cv",
                                 "/api/applications/{applicationId}/interviews").authenticated()
                         .requestMatchers(HttpMethod.PUT,
                                 "/api/applications/{applicationId}/task-submission").authenticated()

@@ -4,6 +4,7 @@ import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Grid, Li
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import AssignmentOutlinedIcon from '@mui/icons-material/AssignmentOutlined';
 import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined';
+import DownloadOutlinedIcon from '@mui/icons-material/DownloadOutlined';
 import PageSkeleton from '../components/PageSkeleton';
 import api from '../services/api';
 import { getApplicationStatusDisplay, recruitmentStages } from '../utils/applicationStatus';
@@ -73,6 +74,8 @@ export default function CandidateApplicationDetails() {
   const [interviews, setInterviews] = useState([]);
   const [interviewLoadError, setInterviewLoadError] = useState(false);
   const [loadedInterviewApplicationId, setLoadedInterviewApplicationId] = useState(null);
+  const [downloadingCv, setDownloadingCv] = useState(false);
+  const [cvDownloadError, setCvDownloadError] = useState('');
 
   useEffect(() => {
     let isCurrent = true;
@@ -191,6 +194,33 @@ export default function CandidateApplicationDetails() {
       );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCvDownload = async () => {
+    if (!application || downloadingCv) return;
+    setDownloadingCv(true);
+    setCvDownloadError('');
+    try {
+      const response = await api.get(`/applications/${application.id}/cv`, { responseType: 'blob' });
+      const objectUrl = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `cv-application-${application.id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      if (error.response?.status === 401) {
+        window.location.assign('/login');
+        return;
+      }
+      setCvDownloadError(error.response?.status === 404
+        ? 'No stored CV is available for this application.'
+        : 'We could not download the CV. Please try again.');
+    } finally {
+      setDownloadingCv(false);
     }
   };
 
@@ -339,6 +369,10 @@ export default function CandidateApplicationDetails() {
                     <Typography variant="body2"><strong>Status:</strong> {status.label}</Typography>
                     <Typography variant="body2"><strong>Applied:</strong> {appliedAt || 'Date unavailable'}</Typography>
                   </Stack>
+                  {cvDownloadError && <Alert severity="warning" sx={{ mt: 2 }}>{cvDownloadError}</Alert>}
+                  <Button onClick={handleCvDownload} startIcon={<DownloadOutlinedIcon />} variant="outlined" disabled={downloadingCv} fullWidth sx={{ mt: 2 }}>
+                    {downloadingCv ? 'Downloading…' : 'Download CV'}
+                  </Button>
                 </CardContent>
               </Card>
             </Stack>

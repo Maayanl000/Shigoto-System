@@ -1,6 +1,7 @@
 package com.shigoto.backend.service;
 
 import com.shigoto.backend.dto.AuthenticatedUserResponseDTO;
+import com.shigoto.backend.dto.CandidateProfileUpdateRequestDTO;
 import com.shigoto.backend.dto.LoginRequestDTO;
 import com.shigoto.backend.dto.RegisterRequestDTO;
 import com.shigoto.backend.entity.Role;
@@ -50,7 +51,8 @@ class AuthServiceTest {
         });
 
         AuthenticatedUserResponseDTO response = authService.registerCandidate(
-                new RegisterRequestDTO("  Maya ", " Levi  ", " Candidate@Example.COM ", "secret123"));
+                new RegisterRequestDTO("  Maya ", " Levi  ", " Candidate@Example.COM ", "secret123",
+                        " https://github.com/maya "));
 
         assertEquals(7L, response.id());
         assertEquals("Maya", response.firstName());
@@ -58,6 +60,8 @@ class AuthServiceTest {
         assertEquals("candidate@example.com", response.email());
         assertEquals(Role.CANDIDATE, response.role());
         assertEquals(Role.CANDIDATE, saved.get().getRole());
+        assertEquals("https://github.com/maya", saved.get().getGithubProfileUrl());
+        assertEquals("https://github.com/maya", response.githubProfileUrl());
         assertNotEquals("secret123", saved.get().getPassword());
         assertTrue(passwordEncoder.matches("secret123", saved.get().getPassword()));
     }
@@ -67,7 +71,8 @@ class AuthServiceTest {
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var response = authService.registerCandidate(
-                new RegisterRequestDTO("Dana", "Cohen", "dana@example.com", "secret123"));
+                new RegisterRequestDTO("Dana", "Cohen", "dana@example.com", "secret123",
+                        "https://github.com/dana"));
 
         assertEquals(Role.CANDIDATE, response.role());
         verify(userRepository).save(argThat(user -> user.getRole() == Role.CANDIDATE));
@@ -80,7 +85,18 @@ class AuthServiceTest {
         when(userRepository.existsByEmail("duplicate@example.com")).thenReturn(true);
 
         assertThrows(DuplicateEmailException.class, () -> authService.registerCandidate(
-                new RegisterRequestDTO("Dana", "Cohen", " Duplicate@Example.com ", "secret123")));
+                new RegisterRequestDTO("Dana", "Cohen", " Duplicate@Example.com ", "secret123",
+                        "https://github.com/dana")));
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void registrationRequiresValidGithubProfile() {
+        assertThrows(IllegalArgumentException.class, () -> authService.registerCandidate(
+                new RegisterRequestDTO("Dana", "Cohen", "dana@example.com", "secret123", "")));
+        assertThrows(IllegalArgumentException.class, () -> authService.registerCandidate(
+                new RegisterRequestDTO("Dana", "Cohen", "dana@example.com", "secret123",
+                        "https://example.com/dana")));
         verify(userRepository, never()).save(any());
     }
 
@@ -111,7 +127,8 @@ class AuthServiceTest {
     @Test
     void loadsCurrentUserFromAuthenticationName() {
         User user = User.builder().id(9L).firstName("Dana").lastName("Cohen")
-                .email("dana@example.com").password("encoded").role(Role.CANDIDATE).build();
+                .email("dana@example.com").password("encoded").role(Role.CANDIDATE)
+                .githubProfileUrl("https://github.com/dana").build();
         Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
                 "dana@example.com", null, java.util.List.of());
         when(userRepository.findByEmail("dana@example.com")).thenReturn(Optional.of(user));
@@ -121,6 +138,45 @@ class AuthServiceTest {
         assertEquals(9L, response.id());
         assertEquals("dana@example.com", response.email());
         assertEquals(Role.CANDIDATE, response.role());
+        assertEquals("https://github.com/dana", response.githubProfileUrl());
+    }
+
+    @Test
+    void authenticatedCandidateUpdatesProfileWithoutSupplyingUserId() {
+        User candidate = User.builder().id(9L).firstName("Old").lastName("Name")
+                .email("dana@example.com").role(Role.CANDIDATE).build();
+        Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
+                "dana@example.com", null, java.util.List.of());
+        when(userRepository.findByEmail("dana@example.com")).thenReturn(Optional.of(candidate));
+        when(userRepository.save(candidate)).thenReturn(candidate);
+        CandidateProfileUpdateRequestDTO request = new CandidateProfileUpdateRequestDTO(
+                " Dana ", " Cohen ", " https://github.com/dana ");
+
+        var response = authService.updateCandidateProfile(request, authentication);
+
+        assertEquals(9L, response.id());
+        assertEquals("Dana", response.firstName());
+        assertEquals("Cohen", response.lastName());
+        assertEquals("https://github.com/dana", response.githubProfileUrl());
+        verify(userRepository).save(candidate);
+        assertFalse(Arrays.stream(CandidateProfileUpdateRequestDTO.class.getRecordComponents())
+                .anyMatch(component -> component.getName().toLowerCase().contains("id")));
+    }
+
+    @Test
+    void rejectsInvalidGithubProfileAndDigitsInNames() {
+        User candidate = User.builder().id(9L).email("dana@example.com").role(Role.CANDIDATE).build();
+        Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
+                "dana@example.com", null, java.util.List.of());
+        when(userRepository.findByEmail("dana@example.com")).thenReturn(Optional.of(candidate));
+
+        assertThrows(IllegalArgumentException.class, () -> authService.updateCandidateProfile(
+                new CandidateProfileUpdateRequestDTO("Dana", "Cohen", "https://example.com/dana"),
+                authentication));
+        assertThrows(IllegalArgumentException.class, () -> authService.updateCandidateProfile(
+                new CandidateProfileUpdateRequestDTO("Dana2", "Cohen", "https://github.com/dana"),
+                authentication));
+        verify(userRepository, never()).save(candidate);
     }
 
     @Test
@@ -136,6 +192,8 @@ class AuthServiceTest {
 
     @Test
     void safeResponseHasNoPasswordComponent() {
+        assertTrue(Arrays.stream(AuthenticatedUserResponseDTO.class.getRecordComponents())
+                .anyMatch(component -> component.getName().equals("githubProfileUrl")));
         assertFalse(Arrays.stream(AuthenticatedUserResponseDTO.class.getRecordComponents())
                 .anyMatch(component -> component.getName().toLowerCase().contains("password")));
     }

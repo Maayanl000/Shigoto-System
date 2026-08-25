@@ -36,7 +36,8 @@ public class Application {
     @Column(nullable = false)
     private ApplicationStatus status;
 
-    private String cvUrl; // קישור לקורות החיים
+    // Internal UUID storage key (not a public URL or filesystem path).
+    private String cvUrl;
 
     @Column(columnDefinition = "TEXT")
     private String coverLetter; // מכתב מקדים

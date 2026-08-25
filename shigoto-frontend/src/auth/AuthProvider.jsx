@@ -42,6 +42,11 @@ export default function AuthProvider({ children }) {
       setUser(response.data);
       return response.data;
     },
+    updateProfile: async (profile) => {
+      const response = await api.put('/auth/me/profile', profile);
+      setUser(response.data);
+      return response.data;
+    },
     logout: async () => {
       try {
         await api.post('/auth/logout');

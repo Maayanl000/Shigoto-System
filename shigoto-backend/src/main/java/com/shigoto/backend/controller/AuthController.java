@@ -1,6 +1,7 @@
 package com.shigoto.backend.controller;
 
 import com.shigoto.backend.dto.AuthenticatedUserResponseDTO;
+import com.shigoto.backend.dto.CandidateProfileUpdateRequestDTO;
 import com.shigoto.backend.dto.LoginRequestDTO;
 import com.shigoto.backend.dto.RegisterRequestDTO;
 import com.shigoto.backend.service.AuthService;
@@ -47,6 +48,13 @@ public class AuthController {
     @GetMapping("/me")
     public AuthenticatedUserResponseDTO me(Authentication authentication) {
         return authService.getAuthenticatedUser(authentication);
+    }
+
+    @PutMapping("/me/profile")
+    public AuthenticatedUserResponseDTO updateProfile(
+            @RequestBody CandidateProfileUpdateRequestDTO request,
+            Authentication authentication) {
+        return authService.updateCandidateProfile(request, authentication);
     }
 
     @PostMapping("/logout")

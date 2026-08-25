@@ -1,55 +1,30 @@
 import { useRef, useState } from 'react';
-import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Divider, FormHelperText, Grid, IconButton, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Divider, FormHelperText, IconButton, Stack, TextField, Typography } from '@mui/material';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import UploadFileOutlinedIcon from '@mui/icons-material/UploadFileOutlined';
 import api from '../services/api';
+import { useAuth } from '../auth/authContext';
 
-const initialFormValues = {
-  fullName: '',
-  email: '',
-  githubUrl: '',
-  coverNote: '',
-};
-
-function isValidEmail(value) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
-function isValidFullName(value) {
-  return /\p{L}/u.test(value) && /^[\p{L}\p{M}\p{Zs}\p{Pd}'’]+$/u.test(value);
-}
-
-function isValidGithubUrl(value) {
-  try {
-    const url = new URL(value);
-    const hostname = url.hostname.toLowerCase();
-    const username = url.pathname.split('/')[1];
-    const isAllowedHostname = hostname === 'github.com' || hostname === 'www.github.com';
-    return ['http:', 'https:'].includes(url.protocol) && isAllowedHostname && Boolean(username);
-  } catch {
-    return false;
-  }
-}
+const MAX_CV_SIZE = 5 * 1024 * 1024;
 
 function isPdf(file) {
   return file?.type === 'application/pdf' || file?.name.toLowerCase().endsWith('.pdf');
 }
 
-export default function ApplicationDialog({ open, onClose, job }) {
-  const [values, setValues] = useState(initialFormValues);
+export default function ApplicationDialog({ open, onClose, job, onSubmitted }) {
+  const { user } = useAuth();
+  const [coverNote, setCoverNote] = useState('');
   const [cvFile, setCvFile] = useState(null);
-  const [touched, setTouched] = useState({});
+  const [cvTouched, setCvTouched] = useState(false);
   const [submissionStatus, setSubmissionStatus] = useState('idle');
   const [submissionError, setSubmissionError] = useState('');
   const fileInputRef = useRef(null);
 
-  const errors = {
-    fullName: !values.fullName.trim() ? 'Full name is required.' : isValidFullName(values.fullName.trim()) ? '' : 'Use letters, spaces, hyphens, and apostrophes only.',
-    email: !values.email.trim() ? 'Email address is required.' : isValidEmail(values.email.trim()) ? '' : 'Enter a valid email address.',
-    githubUrl: !values.githubUrl.trim() ? 'GitHub Profile URL is required.' : isValidGithubUrl(values.githubUrl.trim()) ? '' : 'Enter a valid GitHub profile URL.',
-    cv: !cvFile ? 'A CV in PDF format is required.' : isPdf(cvFile) ? '' : 'Select a PDF file only.',
-  };
-  const isFormValid = Object.values(errors).every((error) => !error);
+  const cvError = !cvFile
+    ? 'A CV in PDF format is required.'
+    : cvFile.size > MAX_CV_SIZE
+      ? 'CV must not exceed 5 MB.'
+      : isPdf(cvFile) ? '' : 'Select a PDF file only.';
   const canSubmitJob = Boolean(job?.id) && !job?.isFallback;
   const isSubmitting = submissionStatus === 'submitting';
   const isSuccessful = submissionStatus === 'success';
@@ -59,25 +34,16 @@ export default function ApplicationDialog({ open, onClose, job }) {
     setSubmissionError('');
   };
 
-  const handleChange = (field) => (event) => {
-    setValues((current) => ({ ...current, [field]: event.target.value }));
-    clearSubmissionFeedback();
-  };
-
-  const handleBlur = (field) => () => {
-    setTouched((current) => ({ ...current, [field]: true }));
-  };
-
   const handleFileChange = (event) => {
     setCvFile(event.target.files?.[0] || null);
-    setTouched((current) => ({ ...current, cv: true }));
+    setCvTouched(true);
     clearSubmissionFeedback();
   };
 
   const resetForm = () => {
-    setValues(initialFormValues);
+    setCoverNote('');
     setCvFile(null);
-    setTouched({});
+    setCvTouched(false);
     clearSubmissionFeedback();
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -89,31 +55,28 @@ export default function ApplicationDialog({ open, onClose, job }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    setTouched({ fullName: true, email: true, githubUrl: true, cv: true });
-    if (!isFormValid || !canSubmitJob || isSubmitting) return;
+    setCvTouched(true);
+    if (cvError || !canSubmitJob || isSubmitting) return;
 
     setSubmissionStatus('submitting');
     setSubmissionError('');
-
     try {
-      await api.post('/applications', {
-        jobId: job.id,
-        // TODO: Replace null with the stored CV URL when CV upload and storage are implemented.
-        cvUrl: null,
-        coverLetter: values.coverNote,
-      });
+      const formData = new FormData();
+      formData.append('jobId', String(job.id));
+      formData.append('coverLetter', coverNote);
+      formData.append('cv', cvFile);
+      const response = await api.post('/applications', formData);
       setSubmissionStatus('success');
+      onSubmitted?.(response.data);
     } catch (error) {
       if (error.response?.status === 401) {
         window.location.assign('/login');
         return;
-      } else if (error.response?.status === 409) {
+      }
+      if (error.response?.status === 409) {
         setSubmissionError('You have already applied for this position.');
       } else {
-        const backendMessage = error.response?.data?.message;
-        setSubmissionError(typeof backendMessage === 'string' && backendMessage.trim()
-          ? backendMessage
-          : 'We could not submit your application. Please try again.');
+        setSubmissionError('We could not submit your application. Please try again.');
       }
       setSubmissionStatus('error');
     }
@@ -134,69 +97,31 @@ export default function ApplicationDialog({ open, onClose, job }) {
         </DialogTitle>
         <Divider />
         <DialogContent sx={{ display: 'grid', gap: 2.5, pt: 3 }}>
-          <Alert severity="info" icon={false}>Development mode: the selected CV is not uploaded yet.</Alert>
+          <Alert severity="info" icon={false}>Your selected PDF CV will be securely attached to this application.</Alert>
           {!canSubmitJob && <Alert severity="warning">This preview job is not connected to the backend and cannot accept applications.</Alert>}
           {submissionStatus === 'success' && <Alert severity="success">Your application was submitted successfully.</Alert>}
           {submissionStatus === 'error' && <Alert severity="error">{submissionError}</Alert>}
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                label="Full name"
-                value={values.fullName}
-                onChange={handleChange('fullName')}
-                onBlur={handleBlur('fullName')}
-                error={touched.fullName && Boolean(errors.fullName)}
-                helperText={touched.fullName ? errors.fullName : ' '}
-                required
-                disabled={isSuccessful}
-                autoComplete="name"
-                fullWidth
-              />
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                label="Email address"
-                type="email"
-                value={values.email}
-                onChange={handleChange('email')}
-                onBlur={handleBlur('email')}
-                error={touched.email && Boolean(errors.email)}
-                helperText={touched.email ? errors.email : ' '}
-                required
-                disabled={isSuccessful}
-                autoComplete="email"
-                fullWidth
-              />
-            </Grid>
-          </Grid>
+
+          <Box sx={{ p: 1.75, borderRadius: 1.5, bgcolor: 'background.default' }}>
+            <Typography variant="body2" fontWeight={700}>{user?.firstName} {user?.lastName}</Typography>
+            <Typography variant="caption" color="text.secondary">{user?.email} · {user?.githubProfileUrl}</Typography>
+          </Box>
+
           <TextField
-            label="GitHub Profile URL"
-            placeholder="https://github.com/username"
-            type="url"
-            value={values.githubUrl}
-            onChange={handleChange('githubUrl')}
-            onBlur={handleBlur('githubUrl')}
-            error={touched.githubUrl && Boolean(errors.githubUrl)}
-            helperText={touched.githubUrl ? errors.githubUrl : 'Use your public GitHub profile URL.'}
-            required
-            disabled={isSuccessful}
-            autoComplete="url"
-            fullWidth
-          />
-          <TextField
-            label="Cover note"
-            value={values.coverNote}
-            onChange={handleChange('coverNote')}
+            label="Cover Letter"
+            value={coverNote}
+            onChange={(event) => { setCoverNote(event.target.value); clearSubmissionFeedback(); }}
             multiline
             minRows={4}
             disabled={isSuccessful}
             fullWidth
           />
-          <Box sx={{ p: 2.5, border: 1, borderStyle: 'dashed', borderColor: touched.cv && errors.cv ? 'error.main' : 'divider', borderRadius: 2, bgcolor: 'background.default' }}>
+
+          <Box sx={{ p: 2.5, border: 1, borderStyle: 'dashed', borderColor: cvTouched && cvError ? 'error.main' : 'divider', borderRadius: 2, bgcolor: 'background.default' }}>
             <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={2}>
               <Box>
                 <Typography variant="body2" fontWeight={800}>CV / resume</Typography>
-                <Typography variant="caption" color="text.secondary">Select one PDF file. Upload will be added separately.</Typography>
+                <Typography variant="caption" color="text.secondary">Select one PDF file up to 5 MB.</Typography>
               </Box>
               <Button component="label" variant="outlined" startIcon={<UploadFileOutlinedIcon />} disabled={isSuccessful}>
                 Choose PDF
@@ -204,7 +129,7 @@ export default function ApplicationDialog({ open, onClose, job }) {
               </Button>
             </Stack>
             {cvFile && <Typography variant="body2" sx={{ mt: 1.5 }} noWrap>Selected: {cvFile.name}</Typography>}
-            {touched.cv && errors.cv && <FormHelperText error sx={{ mt: 1 }}>{errors.cv}</FormHelperText>}
+            {cvTouched && cvError && <FormHelperText error sx={{ mt: 1 }}>{cvError}</FormHelperText>}
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2.5 }}>
@@ -213,7 +138,7 @@ export default function ApplicationDialog({ open, onClose, job }) {
           ) : (
             <>
               <Button type="button" onClick={handleClose} color="inherit" disabled={isSubmitting}>Cancel</Button>
-              <Button type="submit" variant="contained" disabled={!isFormValid || !canSubmitJob || isSubmitting}>
+              <Button type="submit" variant="contained" disabled={Boolean(cvError) || !canSubmitJob || isSubmitting}>
                 {isSubmitting ? 'Submitting…' : 'Submit application'}
               </Button>
             </>

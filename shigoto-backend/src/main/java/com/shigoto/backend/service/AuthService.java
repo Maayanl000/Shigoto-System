@@ -1,6 +1,7 @@
 package com.shigoto.backend.service;
 
 import com.shigoto.backend.dto.AuthenticatedUserResponseDTO;
+import com.shigoto.backend.dto.CandidateProfileUpdateRequestDTO;
 import com.shigoto.backend.dto.LoginRequestDTO;
 import com.shigoto.backend.dto.RegisterRequestDTO;
 import com.shigoto.backend.entity.Role;
@@ -19,6 +20,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.Locale;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.regex.Pattern;
 
 @Service
@@ -44,6 +47,10 @@ public class AuthService {
         String lastName = requireName(request.lastName(), "Last name");
         String email = normalizeAndValidateEmail(request.email());
         validatePassword(request.password());
+        if (request.githubProfileUrl() == null || request.githubProfileUrl().isBlank()) {
+            throw new IllegalArgumentException("GitHub profile URL is required");
+        }
+        String githubProfileUrl = normalizeGithubProfileUrl(request.githubProfileUrl());
 
         if (userRepository.existsByEmail(email)) {
             throw new DuplicateEmailException("User with this email already exists");
@@ -55,6 +62,7 @@ public class AuthService {
                 .email(email)
                 .password(passwordEncoder.encode(request.password()))
                 .role(Role.CANDIDATE)
+                .githubProfileUrl(githubProfileUrl)
                 .build();
 
         try {
@@ -93,6 +101,19 @@ public class AuthService {
         return user;
     }
 
+    public AuthenticatedUserResponseDTO updateCandidateProfile(
+            CandidateProfileUpdateRequestDTO request,
+            Authentication authentication) {
+        if (request == null) {
+            throw new IllegalArgumentException("Profile details are required");
+        }
+        User candidate = getAuthenticatedCandidate(authentication);
+        candidate.setFirstName(requireName(request.firstName(), "First name"));
+        candidate.setLastName(requireName(request.lastName(), "Last name"));
+        candidate.setGithubProfileUrl(normalizeGithubProfileUrl(request.githubProfileUrl()));
+        return AuthenticatedUserResponseDTO.from(userRepository.save(candidate));
+    }
+
     private User findByEmail(String email) {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
@@ -102,7 +123,32 @@ public class AuthService {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " is required");
         }
-        return value.trim();
+        String trimmed = value.trim();
+        if (trimmed.codePoints().anyMatch(Character::isDigit)) {
+            throw new IllegalArgumentException(fieldName + " must not contain digits");
+        }
+        return trimmed;
+    }
+
+    private String normalizeGithubProfileUrl(String value) {
+        if (value == null || value.isBlank()) return null;
+        String trimmed = value.trim();
+        try {
+            URI uri = new URI(trimmed);
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            boolean validScheme = "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
+            boolean validHost = "github.com".equalsIgnoreCase(host)
+                    || "www.github.com".equalsIgnoreCase(host);
+            boolean hasUsername = java.util.Arrays.stream(uri.getPath().split("/"))
+                    .anyMatch(segment -> !segment.isBlank());
+            if (!validScheme || !validHost || !hasUsername) {
+                throw new IllegalArgumentException("GitHub profile URL is invalid");
+            }
+            return trimmed;
+        } catch (URISyntaxException ex) {
+            throw new IllegalArgumentException("GitHub profile URL is invalid");
+        }
     }
 
     private String normalizeAndValidateEmail(String value) {

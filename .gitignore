@@ -28,6 +28,9 @@
 **/application-local.properties
 **/application-secrets.properties
 
+# Local runtime uploads
+**/data/
+
 # ===============================
 # Logs
 # ===============================

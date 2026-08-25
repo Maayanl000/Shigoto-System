@@ -1,9 +1,7 @@
 package com.shigoto.backend.dto;
 
-public record RegisterRequestDTO(
+public record CandidateProfileUpdateRequestDTO(
         String firstName,
         String lastName,
-        String email,
-        String password,
         String githubProfileUrl
 ) {}
