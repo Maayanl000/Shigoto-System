@@ -57,6 +57,7 @@ class ApplicationServiceTest {
                 1L, " https://github.com/example/home-task ", application.getCandidate());
 
         assertEquals(ApplicationStatus.TASK_SUBMITTED, response.status());
+        assertEquals("Implement the documented API", response.taskInstructions());
         assertEquals("https://github.com/example/home-task", response.taskRepoUrl());
         verify(applicationRepository).save(application);
     }
@@ -334,6 +335,118 @@ class ApplicationServiceTest {
         verify(applicationRepository, never()).save(any());
     }
 
+    @Test
+    void hrCanMoveOwnCompanyApplicationFromAppliedToHrInterview() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
+
+        var details = applicationService.transitionHrApplicationStatus(
+                1L, ApplicationStatus.HR_INTERVIEW, hr);
+
+        assertEquals(ApplicationStatus.HR_INTERVIEW, details.status());
+    }
+
+    @Test
+    void hrCannotSkipFromAppliedDirectlyToOffer() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.OFFER, hr));
+        verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void hrCannotChangeAnotherCompanyApplicationStatus() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        when(applicationRepository.findByIdAndJobCompany(99L, company)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                applicationService.transitionHrApplicationStatus(99L, ApplicationStatus.REJECTED, hr));
+        verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void hrWithoutCompanyCannotChangeApplicationStatusOrAssignTask() {
+        User hr = User.builder().id(20L).role(Role.HR).build();
+
+        assertThrows(AccessDeniedException.class, () ->
+                applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.REJECTED, hr));
+        assertThrows(AccessDeniedException.class, () ->
+                applicationService.assignHomeTask(1L, "Build an API", LocalDateTime.now().plusDays(2), hr));
+        verify(applicationRepository, never()).findByIdAndJobCompany(any(), any());
+    }
+
+    @Test
+    void hrAssignsFutureHomeTaskFromHrInterview() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        application.setStatus(ApplicationStatus.HR_INTERVIEW);
+        application.setTaskRepoUrl("https://github.com/old/submission");
+        LocalDateTime deadline = LocalDateTime.now().plusDays(5);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
+
+        var details = applicationService.assignHomeTask(1L, "  Build a REST API  ", deadline, hr);
+
+        assertEquals(ApplicationStatus.TASK_SENT, details.status());
+        assertEquals(deadline, details.taskDeadline());
+        assertEquals("Build a REST API", details.taskInstructions());
+        assertEquals(null, details.taskRepoUrl());
+    }
+
+    @Test
+    void homeTaskRejectsPastDeadlineAndDuplicateSend() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        application.setStatus(ApplicationStatus.HR_INTERVIEW);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                applicationService.assignHomeTask(1L, "Build an API", LocalDateTime.now().minusMinutes(1), hr));
+
+        application.setStatus(ApplicationStatus.TASK_SENT);
+        assertThrows(IllegalArgumentException.class, () ->
+                applicationService.assignHomeTask(1L, "Build an API", LocalDateTime.now().plusDays(2), hr));
+        verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void homeTaskCannotOverwriteSubmittedTask() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        application.setStatus(ApplicationStatus.TASK_SUBMITTED);
+        application.setTaskRepoUrl("https://github.com/candidate/submission");
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                applicationService.assignHomeTask(1L, "Build an API", LocalDateTime.now().plusDays(2), hr));
+        assertEquals("https://github.com/candidate/submission", application.getTaskRepoUrl());
+        verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void homeTaskRejectsBlankInstructions() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        application.setStatus(ApplicationStatus.HR_INTERVIEW);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+
+        assertThrows(IllegalArgumentException.class, () -> applicationService.assignHomeTask(
+                1L, "   ", LocalDateTime.now().plusDays(2), hr));
+        verify(applicationRepository, never()).save(any());
+    }
+
     private Application assignedApplication(LocalDateTime deadline) {
         Company company = Company.builder().name("Example Company").build();
         Job job = Job.builder().id(2L).title("Developer").company(company).location("Remote").build();
@@ -344,6 +457,7 @@ class ApplicationServiceTest {
                 .job(job)
                 .status(ApplicationStatus.TASK_SENT)
                 .taskDeadline(deadline)
+                .taskInstructions("Implement the documented API")
                 .build();
     }
 

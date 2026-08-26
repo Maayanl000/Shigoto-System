@@ -72,25 +72,6 @@ public class ApplicationService {
             throw ex;
         }
     }
-
-
-    // פונקציית העדכון המעודכנת והנקייה שלנו
-    public StaffApplicationResponseDTO updateApplicationStatus(
-            Long applicationId, ApplicationStatus newStatus, String hrNotes) {
-
-        Application application = applicationRepository.findById(applicationId)
-                .orElseThrow(() -> new IllegalArgumentException("Application not found with id: " + applicationId));
-
-        if (newStatus != null) {
-            application.setStatus(newStatus);
-        }
-        if (hrNotes != null) {
-            application.setHrNotes(hrNotes);
-        }
-
-        return StaffApplicationResponseDTO.from(applicationRepository.save(application));
-    }
-
     // פונקציה למחיקת מועמדות לפי ID
     public void deleteApplication(Long applicationId) {
         Application application = applicationRepository.findById(applicationId)
@@ -131,6 +112,55 @@ public class ApplicationService {
         }
         application.setHrNotes(normalizedNotes);
         return HrApplicationDetailsDTO.from(applicationRepository.save(application));
+    }
+
+    @Transactional
+    public HrApplicationDetailsDTO transitionHrApplicationStatus(
+            Long applicationId, ApplicationStatus targetStatus, User hr) {
+        Application application = findHrCompanyApplication(applicationId, hr);
+        ApplicationStatus currentStatus = application.getStatus();
+        if (!isAllowedHrTransition(currentStatus, targetStatus)) {
+            throw new IllegalArgumentException(
+                    "Application cannot move from " + currentStatus + " to " + targetStatus);
+        }
+        application.setStatus(targetStatus);
+        return HrApplicationDetailsDTO.from(applicationRepository.save(application));
+    }
+
+    @Transactional
+    public HrApplicationDetailsDTO assignHomeTask(
+            Long applicationId, String taskInstructions, LocalDateTime deadline, User hr) {
+        Application application = findHrCompanyApplication(applicationId, hr);
+        if (application.getStatus() != ApplicationStatus.HR_INTERVIEW) {
+            throw new IllegalArgumentException("Home task can only be sent after the HR interview stage");
+        }
+        String normalizedInstructions = taskInstructions == null ? null : taskInstructions.trim();
+        if (normalizedInstructions == null || normalizedInstructions.isEmpty()) {
+            throw new IllegalArgumentException("Home task instructions are required");
+        }
+        if (normalizedInstructions.length() > 10_000) {
+            throw new IllegalArgumentException("Home task instructions must not exceed 10000 characters");
+        }
+        if (deadline == null || !deadline.isAfter(LocalDateTime.now())) {
+            throw new IllegalArgumentException("Home task deadline must be in the future");
+        }
+        application.setTaskInstructions(normalizedInstructions);
+        application.setTaskDeadline(deadline);
+        application.setTaskRepoUrl(null);
+        application.setStatus(ApplicationStatus.TASK_SENT);
+        return HrApplicationDetailsDTO.from(applicationRepository.save(application));
+    }
+
+    private boolean isAllowedHrTransition(ApplicationStatus currentStatus, ApplicationStatus targetStatus) {
+        if (targetStatus == ApplicationStatus.REJECTED) {
+            return currentStatus != ApplicationStatus.OFFER && currentStatus != ApplicationStatus.REJECTED;
+        }
+        return switch (currentStatus) {
+            case APPLIED -> targetStatus == ApplicationStatus.HR_INTERVIEW;
+            case TASK_SUBMITTED -> targetStatus == ApplicationStatus.TASK_APPROVED;
+            case TECH_INTERVIEW_SCHEDULED -> targetStatus == ApplicationStatus.OFFER;
+            default -> false;
+        };
     }
 
     public List<StaffApplicationResponseDTO> getApplicationsByCandidate(Long candidateId) {
@@ -271,6 +301,7 @@ public class ApplicationService {
                 application.getStatus(),
                 application.getAppliedAt(),
                 application.getTaskDeadline(),
+                application.getTaskInstructions(),
                 application.getTaskRepoUrl()
         );
     }

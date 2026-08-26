@@ -43,6 +43,19 @@ export default function CandidateDetails() {
   const [notesMessage, setNotesMessage] = useState('');
   const [cvError, setCvError] = useState('');
   const [downloadingCv, setDownloadingCv] = useState(false);
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
+  const [taskDeadline, setTaskDeadline] = useState('');
+  const [taskInstructions, setTaskInstructions] = useState('');
+
+  const statusActions = record ? {
+    APPLIED: [{ label: 'Move to HR interview', status: 'HR_INTERVIEW' }, { label: 'Reject', status: 'REJECTED' }],
+    HR_INTERVIEW: [{ label: 'Reject', status: 'REJECTED' }],
+    TASK_SENT: [{ label: 'Reject', status: 'REJECTED' }],
+    TASK_SUBMITTED: [{ label: 'Approve task', status: 'TASK_APPROVED' }, { label: 'Reject', status: 'REJECTED' }],
+    TASK_APPROVED: [{ label: 'Reject', status: 'REJECTED' }],
+    TECH_INTERVIEW_SCHEDULED: [{ label: 'Make offer', status: 'OFFER' }, { label: 'Reject', status: 'REJECTED' }],
+  }[record.status] || [] : [];
 
   const loadRecord = useCallback(async () => {
     setLoading(true);
@@ -115,6 +128,48 @@ export default function CandidateDetails() {
     }
   };
 
+  const updateStatus = async (status) => {
+    setStatusBusy(true);
+    setStatusMessage('');
+    try {
+      const response = await api.put(`/hr/applications/${applicationId}/status`, { status });
+      setRecord(response.data);
+      setStatusMessage(`Status updated to ${statusLabels[response.data.status] || response.data.status}.`);
+    } catch (requestError) {
+      setStatusMessage(requestError.response?.data?.message || 'Could not update the application status.');
+    } finally {
+      setStatusBusy(false);
+    }
+  };
+
+  const sendHomeTask = async () => {
+    if (!taskInstructions.trim()) {
+      setStatusMessage('Enter task instructions before sending the home task.');
+      return;
+    }
+    const parsedDeadline = new Date(taskDeadline);
+    if (!taskDeadline || Number.isNaN(parsedDeadline.getTime()) || parsedDeadline <= new Date()) {
+      setStatusMessage('Choose a future deadline before sending the home task.');
+      return;
+    }
+    setStatusBusy(true);
+    setStatusMessage('');
+    try {
+      const response = await api.post(`/hr/applications/${applicationId}/home-task`, {
+        taskInstructions: taskInstructions.trim(),
+        deadline: taskDeadline || null,
+      });
+      setRecord(response.data);
+      setTaskDeadline('');
+      setTaskInstructions('');
+      setStatusMessage('Home task sent.');
+    } catch (requestError) {
+      setStatusMessage(requestError.response?.data?.message || 'Could not send the home task.');
+    } finally {
+      setStatusBusy(false);
+    }
+  };
+
   return (
     <PageSkeleton title="Candidate Record" description="Review this candidate in the context of one company job application.">
       {loading && <Box sx={{ minHeight: 320, display: 'grid', placeItems: 'center' }}><CircularProgress size={34} /></Box>}
@@ -171,8 +226,30 @@ export default function CandidateDetails() {
             <Card sx={{ height: '100%' }}><CardContent>
               <Typography variant="h6" gutterBottom>Task information</Typography>
               <Stack spacing={1.5}>
+                {record.taskInstructions && <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{record.taskInstructions}</Typography>}
                 <Detail label="Deadline" value={formatDate(record.taskDeadline)} />
                 {record.taskRepoUrl ? <Link href={record.taskRepoUrl} target="_blank" rel="noopener noreferrer">Submitted repository</Link> : <Detail label="Repository" value={null} />}
+                {record.status === 'HR_INTERVIEW' && (
+                  <Stack spacing={1.25}>
+                    <TextField
+                      label="Task instructions"
+                      multiline
+                      minRows={5}
+                      value={taskInstructions}
+                      onChange={(event) => { setTaskInstructions(event.target.value); setStatusMessage(''); }}
+                      inputProps={{ maxLength: 10000 }}
+                      helperText={`${taskInstructions.length}/10000`}
+                    />
+                    <TextField
+                      label="Home task deadline"
+                      type="datetime-local"
+                      value={taskDeadline}
+                      onChange={(event) => { setTaskDeadline(event.target.value); setStatusMessage(''); }}
+                      slotProps={{ inputLabel: { shrink: true } }}
+                    />
+                    <Button variant="contained" onClick={sendHomeTask} disabled={statusBusy || !taskDeadline || !taskInstructions.trim()}>Send home task</Button>
+                  </Stack>
+                )}
               </Stack>
             </CardContent></Card>
           </Grid>
@@ -180,6 +257,26 @@ export default function CandidateDetails() {
             <Card sx={{ height: '100%' }}><CardContent>
               <Typography variant="h6" gutterBottom>Interview history</Typography>
               <Typography variant="body2" color="text.secondary">Interview records will appear here when the HR interview flow is connected.</Typography>
+            </CardContent></Card>
+          </Grid>
+
+          <Grid size={{ xs: 12 }}>
+            <Card><CardContent>
+              <Typography variant="h6" gutterBottom>Application actions</Typography>
+              {statusActions.length > 0 ? (
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
+                  {statusActions.map((action) => (
+                    <Button
+                      key={action.status}
+                      variant={action.status === 'REJECTED' ? 'outlined' : 'contained'}
+                      color={action.status === 'REJECTED' ? 'error' : 'primary'}
+                      disabled={statusBusy}
+                      onClick={() => updateStatus(action.status)}
+                    >{action.label}</Button>
+                  ))}
+                </Stack>
+              ) : <Typography variant="body2" color="text.secondary">No HR status actions are available at this stage.</Typography>}
+              {statusMessage && <Alert severity={statusMessage.startsWith('Status updated') || statusMessage === 'Home task sent.' ? 'success' : 'error'} sx={{ mt: 2 }}>{statusMessage}</Alert>}
             </CardContent></Card>
           </Grid>
 

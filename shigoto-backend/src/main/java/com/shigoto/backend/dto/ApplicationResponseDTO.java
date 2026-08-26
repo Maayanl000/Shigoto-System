@@ -14,5 +14,6 @@ public record ApplicationResponseDTO(
         ApplicationStatus status,
         LocalDateTime appliedAt,
         LocalDateTime taskDeadline,
+        String taskInstructions,
         String taskRepoUrl
 ) {}

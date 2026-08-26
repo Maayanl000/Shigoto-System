@@ -279,6 +279,7 @@ export default function CandidateApplicationDetails() {
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 2, lineHeight: 1.75 }}>No technical task has been assigned yet.</Typography>
                   ) : isTaskSubmitted ? (
                     <Stack spacing={1.5} sx={{ mt: 2 }}>
+                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.75 }}><strong>Instructions:</strong>{' '}{application.taskInstructions || 'Instructions unavailable'}</Typography>
                       <Typography variant="body2"><strong>Deadline:</strong> {taskDeadline || 'Deadline not available'}</Typography>
                       {submissionSuccess && <Alert severity="success">Technical task submitted successfully.</Alert>}
                       <Typography variant="body2" fontWeight={700}>Task submitted</Typography>
@@ -287,6 +288,7 @@ export default function CandidateApplicationDetails() {
                     </Stack>
                   ) : application.status === 'TASK_SENT' && application.taskDeadline ? (
                     <Stack spacing={1.5} sx={{ mt: 2 }}>
+                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.75 }}><strong>Instructions:</strong>{' '}{application.taskInstructions || 'Instructions unavailable'}</Typography>
                       <Typography variant="body2"><strong>Deadline:</strong> {taskDeadline || 'Deadline unavailable'}</Typography>
                       {taskDeadlineExpired ? (
                         <Alert severity="warning">The submission deadline has passed. Task submission is disabled.</Alert>

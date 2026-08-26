@@ -13,6 +13,7 @@ public record HrApplicationDetailsDTO(
         String coverLetter,
         String hrNotes,
         LocalDateTime taskDeadline,
+        String taskInstructions,
         String taskRepoUrl,
         Long candidateId,
         String firstName,
@@ -34,7 +35,7 @@ public record HrApplicationDetailsDTO(
         return new HrApplicationDetailsDTO(
                 application.getId(), application.getStatus(), application.getAppliedAt(),
                 application.getCoverLetter(), application.getHrNotes(), application.getTaskDeadline(),
-                application.getTaskRepoUrl(), candidate.getId(), candidate.getFirstName(),
+                application.getTaskInstructions(), application.getTaskRepoUrl(), candidate.getId(), candidate.getFirstName(),
                 candidate.getLastName(), candidate.getEmail(), candidate.getGithubProfileUrl(),
                 candidate.getCurrentTitle(), candidate.getDesiredRole(), candidate.getEmploymentType(),
                 candidate.isStudent(), job.getId(), job.getTitle(), job.getLocation(),

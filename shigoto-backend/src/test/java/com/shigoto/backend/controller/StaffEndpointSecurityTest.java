@@ -1,7 +1,6 @@
 package com.shigoto.backend.controller;
 
 import com.shigoto.backend.config.SecurityConfig;
-import com.shigoto.backend.dto.StaffApplicationResponseDTO;
 import com.shigoto.backend.dto.ApplicationResponseDTO;
 import com.shigoto.backend.dto.HrApplicationDetailsDTO;
 import com.shigoto.backend.entity.ApplicationStatus;
@@ -114,7 +113,7 @@ class StaffEndpointSecurityTest {
         User hr = User.builder().id(1L).email("hr@example.com").role(Role.HR)
                 .company(com.shigoto.backend.entity.Company.builder().id(1L).name("Shigoto").build()).build();
         HrApplicationDetailsDTO response = new HrApplicationDetailsDTO(
-                7L, ApplicationStatus.APPLIED, null, "Cover", "Notes", null, null,
+                7L, ApplicationStatus.APPLIED, null, "Cover", "Notes", null, null, null,
                 2L, "Dana", "Cohen", "dana@example.com", "https://github.com/dana",
                 "Developer", "Backend Engineer", null, false, 3L, "Backend Engineer", "Remote", "Shigoto");
         when(authService.getAuthenticatedHr(any())).thenReturn(hr);
@@ -241,23 +240,40 @@ class StaffEndpointSecurityTest {
     }
 
     @Test
-    void staffApplicationResponseDoesNotSerializeInternalFieldsOrRelationships() throws Exception {
-        StaffApplicationResponseDTO response = new StaffApplicationResponseDTO(
-                1L, 2L, 3L, ApplicationStatus.REJECTED, "Internal HR note");
-        when(applicationService.updateApplicationStatus(1L, ApplicationStatus.REJECTED, "Internal HR note"))
+    void hrStatusChangeUsesAuthenticatedHrAndSafeResponse() throws Exception {
+        User hr = User.builder().id(1L).role(Role.HR)
+                .company(com.shigoto.backend.entity.Company.builder().id(1L).name("Wix").build()).build();
+        HrApplicationDetailsDTO response = new HrApplicationDetailsDTO(
+                1L, ApplicationStatus.REJECTED, null, "Cover", "Notes", null, null, null,
+                2L, "Dana", "Cohen", "dana@example.com", null, null, null, null, false,
+                3L, "Developer", "Remote", "Wix");
+        when(authService.getAuthenticatedHr(any())).thenReturn(hr);
+        when(applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.REJECTED, hr))
                 .thenReturn(response);
 
-        mockMvc.perform(put("/api/applications/1")
+        mockMvc.perform(put("/api/hr/applications/1/status")
                         .with(user("hr").roles("HR"))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\":\"REJECTED\",\"hrNotes\":\"Internal HR note\"}"))
+                        .content("{\"status\":\"REJECTED\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.hrNotes").value("Internal HR note"))
+                .andExpect(jsonPath("$.status").value("REJECTED"))
                 .andExpect(jsonPath("$.password").doesNotExist())
                 .andExpect(jsonPath("$.cvUrl").doesNotExist())
                 .andExpect(jsonPath("$.candidate").doesNotExist())
                 .andExpect(jsonPath("$.job").doesNotExist());
+    }
+
+    @Test
+    void candidateCannotChangeHrStatusOrAssignHomeTask() throws Exception {
+        mockMvc.perform(put("/api/hr/applications/1/status")
+                        .with(user("candidate").roles("CANDIDATE")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"REJECTED\"}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/hr/applications/1/home-task")
+                        .with(user("candidate").roles("CANDIDATE")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"deadline\":\"2026-12-01T12:00:00\"}"))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -281,7 +297,7 @@ class StaffEndpointSecurityTest {
         User candidate = User.builder().id(2L).email("candidate@example.com").role(Role.CANDIDATE).build();
         ApplicationResponseDTO response = new ApplicationResponseDTO(
                 1L, 2L, 3L, "Developer", "Shigoto", "Remote", "Cover",
-                ApplicationStatus.TASK_SUBMITTED, null, null, "https://github.com/user/repo");
+                ApplicationStatus.TASK_SUBMITTED, null, null, "Build a REST API", "https://github.com/user/repo");
         when(authService.getAuthenticatedCandidate(any())).thenReturn(candidate);
         when(applicationService.submitTask(1L, "https://github.com/user/repo", candidate)).thenReturn(response);
 

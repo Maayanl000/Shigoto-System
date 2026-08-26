@@ -1,6 +1,8 @@
 package com.shigoto.backend.controller;
 
 import com.shigoto.backend.dto.HrApplicationDetailsDTO;
+import com.shigoto.backend.dto.HomeTaskAssignmentRequestDTO;
+import com.shigoto.backend.dto.HrApplicationStatusUpdateRequestDTO;
 import com.shigoto.backend.dto.HrNotesUpdateRequestDTO;
 import com.shigoto.backend.entity.User;
 import com.shigoto.backend.service.ApplicationService;
@@ -15,6 +17,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -54,5 +57,30 @@ public class HrApplicationController {
         if (request == null) throw new IllegalArgumentException("HR notes request is required");
         User hr = authService.getAuthenticatedHr(authentication);
         return applicationService.updateHrNotes(applicationId, request.hrNotes(), hr);
+    }
+
+    @PutMapping("/{applicationId}/status")
+    public HrApplicationDetailsDTO updateStatus(
+            @PathVariable Long applicationId,
+            @RequestBody HrApplicationStatusUpdateRequestDTO request,
+            Authentication authentication) {
+        if (request == null || request.status() == null) {
+            throw new IllegalArgumentException("Application status is required");
+        }
+        User hr = authService.getAuthenticatedHr(authentication);
+        return applicationService.transitionHrApplicationStatus(applicationId, request.status(), hr);
+    }
+
+    @PostMapping("/{applicationId}/home-task")
+    public HrApplicationDetailsDTO assignHomeTask(
+            @PathVariable Long applicationId,
+            @RequestBody HomeTaskAssignmentRequestDTO request,
+            Authentication authentication) {
+        if (request == null) {
+            throw new IllegalArgumentException("Home task request is required");
+        }
+        User hr = authService.getAuthenticatedHr(authentication);
+        return applicationService.assignHomeTask(
+                applicationId, request.taskInstructions(), request.deadline(), hr);
     }
 }

@@ -19,6 +19,14 @@ function formatAppliedDate(value) {
     : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(date);
 }
 
+function formatTaskDeadline(value) {
+  if (!value) return 'Deadline unavailable';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? 'Deadline unavailable'
+    : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+}
+
 export default function CandidateDashboard() {
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -52,13 +60,15 @@ export default function CandidateDashboard() {
   }, []);
 
   const activeApplicationCount = applications.filter((application) => !inactiveStatuses.has(application.status)).length;
+  const assignedTasks = applications.filter((application) => ['TASK_SENT', 'TASK_SUBMITTED'].includes(application.status));
+  const pendingTask = assignedTasks.find((application) => application.status === 'TASK_SENT') || assignedTasks[0];
 
   return (
     <PageSkeleton title="Candidate Dashboard" description="Track active applications, current recruitment status, and pending tasks.">
       <Grid container spacing={2.5}>
         {[
           { label: 'Active applications', value: loading || loadError ? '—' : activeApplicationCount, icon: <WorkOutlineRoundedIcon />, tone: 'primary' },
-          { label: 'Pending tasks · Preview', value: '—', icon: <AssignmentOutlinedIcon />, tone: 'secondary' },
+          { label: 'Pending tasks', value: loading || loadError ? '—' : applications.filter((application) => application.status === 'TASK_SENT').length, icon: <AssignmentOutlinedIcon />, tone: 'secondary' },
           { label: 'Upcoming interviews · Preview', value: '—', icon: <ScheduleOutlinedIcon />, tone: 'primary' },
         ].map((item) => (
           <Grid key={item.label} size={{ xs: 12, sm: 4 }}>
@@ -131,14 +141,20 @@ export default function CandidateDashboard() {
             <CardContent>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Typography variant="h6" component="h2">Pending task</Typography>
-                <Chip label="Preview" size="small" variant="outlined" />
+                <Chip label={pendingTask ? 'Assigned' : 'None'} size="small" variant="outlined" />
               </Stack>
-              <Typography fontWeight={700} sx={{ mt: 3 }}>Technical home task</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1, lineHeight: 1.7 }}>Task instructions and a due date will appear here once assigned by HR.</Typography>
-              <Box sx={{ mt: 3, p: 1.5, bgcolor: '#f8fafc', borderRadius: 1.5 }}>
-                <Typography variant="caption" color="text.secondary">Submission controls are intentionally unavailable.</Typography>
-              </Box>
-              <Button variant="outlined" disabled fullWidth sx={{ mt: 2 }}>Open task</Button>
+              {pendingTask ? (
+                <>
+                  <Typography fontWeight={700} sx={{ mt: 3 }}>{pendingTask.jobTitle}</Typography>
+                  <Typography variant="body2" sx={{ mt: 1, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{pendingTask.taskInstructions}</Typography>
+                  <Box sx={{ mt: 3, p: 1.5, bgcolor: '#f8fafc', borderRadius: 1.5 }}>
+                    <Typography variant="caption" color="text.secondary">Due {formatTaskDeadline(pendingTask.taskDeadline)}</Typography>
+                  </Box>
+                  <Button component={Link} to={`/candidate/applications/${pendingTask.id}`} variant="outlined" fullWidth sx={{ mt: 2 }}>Open task</Button>
+                </>
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 2, lineHeight: 1.7 }}>No home task has been assigned.</Typography>
+              )}
             </CardContent>
           </Card>
         </Grid>

@@ -47,6 +47,9 @@ public class Application {
 
     private LocalDateTime taskDeadline; // תאריך יעד למבחן בית
 
+    @Column(columnDefinition = "TEXT")
+    private String taskInstructions;
+
     private String taskRepoUrl; // קישור לגיטהאב של הפתרון
 
     @Column(updatable = false)

@@ -4,7 +4,6 @@ import com.shigoto.backend.dto.ApplicationResponseDTO;
 import com.shigoto.backend.dto.HrApplicationSummaryDTO;
 import com.shigoto.backend.dto.StaffApplicationResponseDTO;
 import com.shigoto.backend.dto.TaskSubmissionRequestDTO;
-import com.shigoto.backend.entity.ApplicationStatus;
 import com.shigoto.backend.entity.User;
 import com.shigoto.backend.service.ApplicationService;
 import com.shigoto.backend.service.AuthService;
@@ -26,8 +25,6 @@ import java.util.List;
 public class ApplicationController {
     private final ApplicationService applicationService;
     private final AuthService authService;
-
-    public record UpdateApplicationRequest(ApplicationStatus status, String hrNotes) {}
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApplicationResponseDTO> createApplication(
@@ -96,14 +93,6 @@ public class ApplicationController {
         User candidate = authService.getAuthenticatedCandidate(authentication);
         return ResponseEntity.ok(
                 applicationService.submitTask(applicationId, request.repositoryUrl(), candidate));
-    }
-
-    @PutMapping("/{id}")
-    public ResponseEntity<StaffApplicationResponseDTO> updateApplication(
-            @PathVariable Long id,
-            @RequestBody UpdateApplicationRequest request) {
-        return ResponseEntity.ok(applicationService.updateApplicationStatus(
-                id, request.status(), request.hrNotes()));
     }
 
     @DeleteMapping("/{id}")
