@@ -56,7 +56,7 @@ function AppRoutes() {
       <Route path="/candidate/applications/:applicationId" element={<RequireRole role="CANDIDATE"><CandidateApplicationDetails /></RequireRole>} />
       <Route path="/hr" element={<RequireRole role="HR"><HrDashboard /></RequireRole>} />
       <Route path="/hr/jobs" element={<RequireRole role="HR"><JobManagement /></RequireRole>} />
-      <Route path="/hr/candidates/:candidateId" element={<RequireRole role="HR"><CandidateDetails /></RequireRole>} />
+      <Route path="/hr/applications/:applicationId" element={<RequireRole role="HR"><CandidateDetails /></RequireRole>} />
       <Route path="/interviewer" element={<RequireRole role="INTERVIEWER"><InterviewerDashboard /></RequireRole>} />
       <Route path="/interviewer/interviews/:interviewId" element={<RequireRole role="INTERVIEWER"><InterviewDetails /></RequireRole>} />
       <Route path="/interviewer/interviews/:interviewId/feedback" element={<RequireRole role="INTERVIEWER"><InterviewFeedback /></RequireRole>} />

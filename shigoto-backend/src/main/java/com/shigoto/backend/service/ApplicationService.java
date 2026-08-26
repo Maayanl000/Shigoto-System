@@ -2,6 +2,7 @@ package com.shigoto.backend.service;
 
 import com.shigoto.backend.dto.ApplicationResponseDTO;
 import com.shigoto.backend.dto.HrApplicationSummaryDTO;
+import com.shigoto.backend.dto.HrApplicationDetailsDTO;
 import com.shigoto.backend.dto.StaffApplicationResponseDTO;
 import com.shigoto.backend.entity.Application;
 import com.shigoto.backend.entity.ApplicationStatus; // הנה ה-import הנקי שהוספנו!
@@ -110,6 +111,28 @@ public class ApplicationService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public HrApplicationDetailsDTO getHrApplicationDetails(Long applicationId, User hr) {
+        return HrApplicationDetailsDTO.from(findHrCompanyApplication(applicationId, hr));
+    }
+
+    public CvDownload getHrApplicationCv(Long applicationId, User hr) {
+        Application application = findHrCompanyApplication(applicationId, hr);
+        return new CvDownload("cv-application-" + applicationId + ".pdf",
+                cvStorageService.load(application.getCvUrl()));
+    }
+
+    @Transactional
+    public HrApplicationDetailsDTO updateHrNotes(Long applicationId, String hrNotes, User hr) {
+        Application application = findHrCompanyApplication(applicationId, hr);
+        String normalizedNotes = hrNotes == null || hrNotes.isBlank() ? null : hrNotes.trim();
+        if (normalizedNotes != null && normalizedNotes.length() > 10_000) {
+            throw new IllegalArgumentException("HR notes must not exceed 10000 characters");
+        }
+        application.setHrNotes(normalizedNotes);
+        return HrApplicationDetailsDTO.from(applicationRepository.save(application));
+    }
+
     public List<StaffApplicationResponseDTO> getApplicationsByCandidate(Long candidateId) {
         var candidate = userRepository.findById(candidateId)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidate not found with id: " + candidateId));
@@ -175,6 +198,12 @@ public class ApplicationService {
             throw new AccessDeniedException("Application does not belong to the authenticated candidate");
         }
         return application;
+    }
+
+    private Application findHrCompanyApplication(Long applicationId, User hr) {
+        requireHrWithCompany(hr);
+        return applicationRepository.findByIdAndJobCompany(applicationId, hr.getCompany())
+                .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
     }
 
     private void requireCandidateRole(User candidate) {

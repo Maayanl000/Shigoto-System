@@ -7,6 +7,7 @@ import com.shigoto.backend.entity.Job;
 import com.shigoto.backend.entity.JobStatus;
 import com.shigoto.backend.entity.Role;
 import com.shigoto.backend.entity.User;
+import com.shigoto.backend.dto.HrApplicationDetailsDTO;
 import com.shigoto.backend.exception.DuplicateApplicationException;
 import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.ApplicationRepository;
@@ -22,6 +23,7 @@ import org.springframework.security.access.AccessDeniedException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -253,6 +255,85 @@ class ApplicationServiceTest {
         verify(applicationRepository, never()).findAll();
     }
 
+    @Test
+    void hrReadsOwnCompanyApplicationDetailsWithoutExposingCvStorage() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+
+        var details = applicationService.getHrApplicationDetails(1L, hr);
+
+        assertEquals(1L, details.applicationId());
+        assertEquals("Dana", details.firstName());
+        assertEquals("Backend Engineer", details.jobTitle());
+        org.junit.jupiter.api.Assertions.assertFalse(Arrays.stream(HrApplicationDetailsDTO.class.getRecordComponents())
+                .anyMatch(component -> component.getName().equals("cvUrl")
+                        || component.getName().equals("candidate") || component.getName().equals("job")));
+    }
+
+    @Test
+    void hrCannotReadOrDownloadAnotherCompanyApplication() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        when(applicationRepository.findByIdAndJobCompany(99L, company)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> applicationService.getHrApplicationDetails(99L, hr));
+        assertThrows(ResourceNotFoundException.class,
+                () -> applicationService.getHrApplicationCv(99L, hr));
+        verify(cvStorageService, never()).load(any());
+    }
+
+    @Test
+    void hrDownloadsOwnCompanyCvThroughSecureStorage() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+        when(cvStorageService.load("internal-key.pdf")).thenReturn(new ByteArrayResource("%PDF".getBytes()));
+
+        var download = applicationService.getHrApplicationCv(1L, hr);
+
+        assertEquals("cv-application-1.pdf", download.downloadFilename());
+        verify(cvStorageService).load("internal-key.pdf");
+    }
+
+    @Test
+    void hrWithoutCompanyCannotReadApplicationDetails() {
+        User hr = User.builder().id(20L).role(Role.HR).build();
+
+        assertThrows(AccessDeniedException.class,
+                () -> applicationService.getHrApplicationDetails(1L, hr));
+        verify(applicationRepository, never()).findByIdAndJobCompany(any(), any());
+    }
+
+    @Test
+    void ownCompanyHrUpdatesNotesWithoutChangingStatus() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
+
+        var details = applicationService.updateHrNotes(1L, " Follow up next week ", hr);
+
+        assertEquals("Follow up next week", details.hrNotes());
+        assertEquals(ApplicationStatus.APPLIED, details.status());
+        verify(applicationRepository).save(application);
+    }
+
+    @Test
+    void hrCannotUpdateNotesForAnotherCompanyApplication() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        when(applicationRepository.findByIdAndJobCompany(99L, company)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> applicationService.updateHrNotes(99L, "Private note", hr));
+        verify(applicationRepository, never()).save(any());
+    }
+
     private Application assignedApplication(LocalDateTime deadline) {
         Company company = Company.builder().name("Example Company").build();
         Job job = Job.builder().id(2L).title("Developer").company(company).location("Remote").build();
@@ -264,6 +345,15 @@ class ApplicationServiceTest {
                 .status(ApplicationStatus.TASK_SENT)
                 .taskDeadline(deadline)
                 .build();
+    }
+
+    private Application detailedApplication(Company company) {
+        User candidate = User.builder().id(3L).firstName("Dana").lastName("Cohen")
+                .email("dana@example.com").role(Role.CANDIDATE).build();
+        Job job = Job.builder().id(2L).title("Backend Engineer").location("Remote").company(company).build();
+        return Application.builder().id(1L).candidate(candidate).job(job).status(ApplicationStatus.APPLIED)
+                .coverLetter("Cover").hrNotes("Notes").cvUrl("internal-key.pdf")
+                .appliedAt(LocalDateTime.of(2026, 8, 20, 10, 30)).build();
     }
 
     private User candidate(Long id) {

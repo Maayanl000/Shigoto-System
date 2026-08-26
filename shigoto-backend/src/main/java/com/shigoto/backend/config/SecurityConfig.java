@@ -60,6 +60,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/hr/jobs").hasRole("HR")
                         .requestMatchers(HttpMethod.POST, "/api/hr/jobs").hasRole("HR")
                         .requestMatchers(HttpMethod.PUT, "/api/hr/jobs/**").hasRole("HR")
+                        .requestMatchers(HttpMethod.OPTIONS, "/api/hr/applications/**").permitAll()
+                        .requestMatchers("/api/hr/applications/**").hasRole("HR")
                         .requestMatchers(HttpMethod.GET, "/api/jobs", "/api/jobs/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/jobs").hasRole("HR")
                         .requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()

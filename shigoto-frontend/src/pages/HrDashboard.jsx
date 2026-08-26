@@ -118,7 +118,7 @@ export default function HrDashboard() {
                   {column.applications.map((application) => (
                     <Card key={application.applicationId} sx={{ mb: 1.25, bgcolor: 'background.paper' }}>
                       <CardActionArea
-                        onClick={() => navigate(`/hr/candidates/${application.candidateId}`)}
+                        onClick={() => navigate(`/hr/applications/${application.applicationId}`)}
                         aria-label={`Open candidate record for ${application.candidateName}`}
                       >
                         <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>

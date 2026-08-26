@@ -3,6 +3,7 @@ package com.shigoto.backend.controller;
 import com.shigoto.backend.config.SecurityConfig;
 import com.shigoto.backend.dto.StaffApplicationResponseDTO;
 import com.shigoto.backend.dto.ApplicationResponseDTO;
+import com.shigoto.backend.dto.HrApplicationDetailsDTO;
 import com.shigoto.backend.entity.ApplicationStatus;
 import com.shigoto.backend.entity.Role;
 import com.shigoto.backend.entity.User;
@@ -47,6 +48,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
         UserController.class,
         JobController.class,
         HrJobController.class,
+        HrApplicationController.class,
         InterviewController.class
 })
 @Import({
@@ -101,6 +103,43 @@ class StaffEndpointSecurityTest {
                         .with(user("candidate").roles("CANDIDATE"))
                         .with(csrf()))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/hr/applications/1").with(user("candidate").roles("CANDIDATE")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/hr/applications/1/cv").with(user("candidate").roles("CANDIDATE")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void hrCanReadSafeApplicationDetails() throws Exception {
+        User hr = User.builder().id(1L).email("hr@example.com").role(Role.HR)
+                .company(com.shigoto.backend.entity.Company.builder().id(1L).name("Shigoto").build()).build();
+        HrApplicationDetailsDTO response = new HrApplicationDetailsDTO(
+                7L, ApplicationStatus.APPLIED, null, "Cover", "Notes", null, null,
+                2L, "Dana", "Cohen", "dana@example.com", "https://github.com/dana",
+                "Developer", "Backend Engineer", null, false, 3L, "Backend Engineer", "Remote", "Shigoto");
+        when(authService.getAuthenticatedHr(any())).thenReturn(hr);
+        when(applicationService.getHrApplicationDetails(7L, hr)).thenReturn(response);
+
+        mockMvc.perform(get("/api/hr/applications/7").with(user("hr").roles("HR")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.applicationId").value(7))
+                .andExpect(jsonPath("$.candidateId").value(2))
+                .andExpect(jsonPath("$.jobTitle").value("Backend Engineer"))
+                .andExpect(jsonPath("$.cvUrl").doesNotExist())
+                .andExpect(jsonPath("$.password").doesNotExist())
+                .andExpect(jsonPath("$.candidate").doesNotExist())
+                .andExpect(jsonPath("$.job").doesNotExist());
+    }
+
+    @Test
+    void hrApplicationBrowserPreflightIsPermitted() throws Exception {
+        mockMvc.perform(options("/api/hr/applications/1")
+                        .header("Origin", "http://localhost:5173")
+                        .header("Access-Control-Request-Method", "GET")
+                        .header("Access-Control-Request-Headers", "X-XSRF-TOKEN"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string("Access-Control-Allow-Origin", "http://localhost:5173"));
     }
 
     @Test
