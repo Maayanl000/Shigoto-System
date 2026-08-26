@@ -221,9 +221,12 @@ class ApplicationServiceTest {
         Company hrCompany = Company.builder().id(10L).name("Shigoto").build();
         Company otherCompany = Company.builder().id(11L).name("Other").build();
         User hr = User.builder().id(20L).role(Role.HR).company(hrCompany).build();
+        LocalDateTime appliedAt = LocalDateTime.of(2026, 8, 20, 10, 30);
         Application ownCompanyApplication = Application.builder()
-                .id(1L).candidate(candidate(3L))
-                .job(Job.builder().id(2L).company(hrCompany).build()).build();
+                .id(1L).candidate(User.builder().id(3L).firstName("Dana").lastName("Cohen")
+                        .role(Role.CANDIDATE).build())
+                .job(Job.builder().id(2L).title("Backend Engineer").company(hrCompany).build())
+                .status(ApplicationStatus.HR_INTERVIEW).appliedAt(appliedAt).build();
         Application otherCompanyApplication = Application.builder()
                 .id(2L).candidate(candidate(4L))
                 .job(Job.builder().id(3L).company(otherCompany).build()).build();
@@ -231,11 +234,15 @@ class ApplicationServiceTest {
 
         var applications = applicationService.getAllApplications(hr);
 
-        assertEquals(List.of(1L), applications.stream().map(response -> response.id()).toList());
+        assertEquals(List.of(1L), applications.stream().map(response -> response.applicationId()).toList());
+        assertEquals("Dana Cohen", applications.getFirst().candidateName());
+        assertEquals("Backend Engineer", applications.getFirst().jobTitle());
+        assertEquals(ApplicationStatus.HR_INTERVIEW, applications.getFirst().status());
+        assertEquals(appliedAt, applications.getFirst().appliedAt());
         verify(applicationRepository).findByJobCompany(hrCompany);
         verify(applicationRepository, never()).findAll();
         org.junit.jupiter.api.Assertions.assertFalse(
-                applications.stream().anyMatch(response -> response.id().equals(otherCompanyApplication.getId())));
+                applications.stream().anyMatch(response -> response.applicationId().equals(otherCompanyApplication.getId())));
     }
 
     @Test

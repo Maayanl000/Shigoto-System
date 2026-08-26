@@ -1,6 +1,7 @@
 package com.shigoto.backend.service;
 
 import com.shigoto.backend.dto.ApplicationResponseDTO;
+import com.shigoto.backend.dto.HrApplicationSummaryDTO;
 import com.shigoto.backend.dto.StaffApplicationResponseDTO;
 import com.shigoto.backend.entity.Application;
 import com.shigoto.backend.entity.ApplicationStatus; // הנה ה-import הנקי שהוספנו!
@@ -100,11 +101,12 @@ public class ApplicationService {
     }
     // הוסיפי את הפונקציה הזו בתוך ApplicationService
 
-    public List<StaffApplicationResponseDTO> getAllApplications(User hr) {
+    @Transactional(readOnly = true)
+    public List<HrApplicationSummaryDTO> getAllApplications(User hr) {
         requireHrWithCompany(hr);
         return applicationRepository.findByJobCompany(hr.getCompany())
                 .stream()
-                .map(StaffApplicationResponseDTO::from)
+                .map(HrApplicationSummaryDTO::from)
                 .toList();
     }
 

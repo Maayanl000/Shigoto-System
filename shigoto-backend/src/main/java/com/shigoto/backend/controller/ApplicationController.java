@@ -1,6 +1,7 @@
 package com.shigoto.backend.controller;
 
 import com.shigoto.backend.dto.ApplicationResponseDTO;
+import com.shigoto.backend.dto.HrApplicationSummaryDTO;
 import com.shigoto.backend.dto.StaffApplicationResponseDTO;
 import com.shigoto.backend.dto.TaskSubmissionRequestDTO;
 import com.shigoto.backend.entity.ApplicationStatus;
@@ -43,7 +44,7 @@ public class ApplicationController {
     }
 
     @GetMapping
-    public ResponseEntity<List<StaffApplicationResponseDTO>> getAllApplications(Authentication authentication) {
+    public ResponseEntity<List<HrApplicationSummaryDTO>> getAllApplications(Authentication authentication) {
         User hr = authService.getAuthenticatedHr(authentication);
         return ResponseEntity.ok(applicationService.getAllApplications(hr));
     }
