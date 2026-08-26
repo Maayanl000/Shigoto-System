@@ -28,9 +28,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.any;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -44,6 +46,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
         AuthController.class,
         UserController.class,
         JobController.class,
+        HrJobController.class,
         InterviewController.class
 })
 @Import({
@@ -122,12 +125,80 @@ class StaffEndpointSecurityTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/hr/jobs").with(user("candidate").roles("CANDIDATE")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/hr/jobs")
+                        .with(user("candidate").roles("CANDIDATE"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/hr/jobs/1")
+                        .with(user("candidate").roles("CANDIDATE"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/interviews")
                         .with(user("candidate").roles("CANDIDATE"))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void hrJobCreateIgnoresSuppliedCompanyAndUsesAuthenticatedHr() throws Exception {
+        var company = com.shigoto.backend.entity.Company.builder().id(1L).name("Wix").build();
+        User hr = User.builder().id(1L).role(Role.HR).company(company).build();
+        when(authService.getAuthenticatedHr(any())).thenReturn(hr);
+
+        mockMvc.perform(post("/api/hr/jobs")
+                        .with(user("hr").roles("HR"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "title": "Developer",
+                                  "description": "Build APIs",
+                                  "location": "Remote",
+                                  "company": {"id": 10, "name": "Google"}
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        verify(jobService).createJobForHr(
+                org.mockito.ArgumentMatchers.same(hr),
+                org.mockito.ArgumentMatchers.argThat(request ->
+                        "Developer".equals(request.title())
+                                && "Build APIs".equals(request.description())
+                                && "Remote".equals(request.location())));
+    }
+
+    @Test
+    void hrJobsCorsPreflightIsNotBlockedByAuthentication() throws Exception {
+        mockMvc.perform(options("/api/hr/jobs")
+                        .header("Origin", "http://localhost:5173")
+                        .header("Access-Control-Request-Method", "GET")
+                        .header("Access-Control-Request-Headers", "X-XSRF-TOKEN"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string("Access-Control-Allow-Credentials", "true"));
+    }
+
+    @Test
+    void authRestorationCorsPreflightIsNotBlockedByAuthentication() throws Exception {
+        mockMvc.perform(options("/api/auth/me")
+                        .header("Origin", "http://localhost:5173")
+                        .header("Access-Control-Request-Method", "GET")
+                        .header("Access-Control-Request-Headers", "X-XSRF-TOKEN"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string("Access-Control-Allow-Credentials", "true"));
     }
 
     @Test

@@ -113,6 +113,7 @@ export default function PublicHeader() {
                 <>
                   <Chip label={`Hi, ${user.firstName}`} size="small" variant="outlined" />
                   <Button component={NavLink} to={dashboardPath} sx={navButtonSx}>Dashboard</Button>
+                  {user.role === 'HR' && <Button component={NavLink} to="/hr/jobs" sx={navButtonSx}>Job Management</Button>}
                   <Button onClick={handleLogout} color="inherit">Logout</Button>
                 </>
               )}
@@ -148,6 +149,7 @@ export default function PublicHeader() {
               <>
                 <Typography variant="body2" color="text.secondary" sx={{ px: 1, py: 0.75 }}>Signed in as {user.firstName}</Typography>
                 <Button component={NavLink} to={dashboardPath} onClick={closeMenu} sx={{ justifyContent: 'flex-start', color: 'text.primary' }}>Dashboard</Button>
+                {user.role === 'HR' && <Button component={NavLink} to="/hr/jobs" onClick={closeMenu} sx={{ justifyContent: 'flex-start', color: 'text.primary' }}>Job Management</Button>}
                 <Button onClick={handleLogout} sx={{ justifyContent: 'flex-start', color: 'text.primary' }}>Logout</Button>
               </>
             )}

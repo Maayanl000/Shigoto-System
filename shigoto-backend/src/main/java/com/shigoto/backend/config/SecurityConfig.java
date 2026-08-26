@@ -57,9 +57,13 @@ public class SecurityConfig {
                         .ignoringRequestMatchers("/api/auth/register", "/api/auth/login"))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/csrf").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/hr/jobs").hasRole("HR")
+                        .requestMatchers(HttpMethod.POST, "/api/hr/jobs").hasRole("HR")
+                        .requestMatchers(HttpMethod.PUT, "/api/hr/jobs/**").hasRole("HR")
                         .requestMatchers(HttpMethod.GET, "/api/jobs", "/api/jobs/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/jobs").hasRole("HR")
-                        .requestMatchers("/api/auth/me", "/api/auth/logout").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/logout").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/auth/me/profile").authenticated()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/applications",

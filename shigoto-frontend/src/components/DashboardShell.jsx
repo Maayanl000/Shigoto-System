@@ -34,7 +34,7 @@ const areaConfig = {
     links: [
       { label: 'Hiring pipeline', to: '/hr', icon: <ViewKanbanOutlinedIcon /> },
       { label: 'Job management', to: '/hr/jobs', icon: <WorkOutlineRoundedIcon /> },
-      { label: 'Candidate record', to: '/hr/candidates/demo', icon: <GroupsOutlinedIcon /> },
+      { label: 'Jobs', to: '/jobs', icon: <PublicRoundedIcon /> },
     ],
   },
   interviewer: {
@@ -62,6 +62,7 @@ export default function DashboardShell({ children }) {
   const config = areaConfig[activeArea];
   const desktopWidth = collapsed ? collapsedWidth : expandedWidth;
   const userInitials = `${user?.firstName?.[0] || ''}${user?.lastName?.[0] || ''}`.toUpperCase() || config.initials;
+  const staffCompany = ['HR', 'INTERVIEWER'].includes(user?.role) ? user?.companyName : null;
 
   const handleLogout = async () => {
     await logout();
@@ -167,7 +168,7 @@ export default function DashboardShell({ children }) {
         <Toolbar sx={{ minHeight: 64 }}>
           <IconButton aria-label="Open workspace navigation" onClick={() => setMobileOpen(true)} sx={{ display: { md: 'none' }, mr: 1 }}><MenuRoundedIcon /></IconButton>
           <Box sx={{ flex: 1 }}><Typography variant="body2" fontWeight={700}>{config.label}</Typography><Typography variant="caption" color="text.secondary">{user?.firstName} {user?.lastName}</Typography></Box>
-          <Chip label={user?.role} size="small" variant="outlined" sx={{ mr: 1.5 }} />
+          <Chip label={staffCompany ? `${user?.role} · ${staffCompany}` : user?.role} size="small" variant="outlined" sx={{ mr: 1.5 }} />
           <Avatar sx={{ width: 34, height: 34, bgcolor: 'secondary.main', fontSize: 13 }}>{userInitials}</Avatar>
         </Toolbar>
       </AppBar>

@@ -144,6 +144,20 @@ class AuthServiceTest {
     }
 
     @Test
+    void includesStaffCompanyNameInAuthenticatedUserResponse() {
+        Company company = Company.builder().id(4L).name("Wix").build();
+        User hr = User.builder().id(10L).firstName("Maayan").lastName("Lahyani")
+                .email("maayan@wix.com").role(Role.HR).company(company).build();
+        Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
+                "maayan@wix.com", null, java.util.List.of());
+        when(userRepository.findByEmail("maayan@wix.com")).thenReturn(Optional.of(hr));
+
+        AuthenticatedUserResponseDTO response = authService.getAuthenticatedUser(authentication);
+
+        assertEquals("Wix", response.companyName());
+    }
+
+    @Test
     void authenticatedCandidateUpdatesProfileWithoutSupplyingUserId() {
         User candidate = User.builder().id(9L).firstName("Old").lastName("Name")
                 .email("dana@example.com").role(Role.CANDIDATE).build();

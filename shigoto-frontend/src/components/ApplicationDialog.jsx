@@ -88,7 +88,7 @@ export default function ApplicationDialog({ open, onClose, job, onSubmitted }) {
         <DialogTitle component="div">
           <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
             <div>
-              <Typography variant="overline" color="secondary.dark" fontWeight={800}>Apply to Shigoto</Typography>
+              <Typography variant="overline" color="secondary.dark" fontWeight={800}>Apply to {job?.companyName || 'Shigoto'}</Typography>
               <Typography variant="h6">{job?.title || 'Selected position'}</Typography>
               <Typography variant="body2" color="text.secondary">{job?.location || 'Location pending'} · {job?.type || 'Full-time'}</Typography>
             </div>

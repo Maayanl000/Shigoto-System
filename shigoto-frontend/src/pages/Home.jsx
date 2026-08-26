@@ -30,6 +30,7 @@ export default function Home() {
     return new Map(candidateApplicationState.applications.map((application) => [String(application.jobId), application]));
   }, [candidateApplicationState, user]);
   const selectedApplication = selectedJob ? applicationByJobId.get(String(selectedJob.id)) : null;
+  const canApply = !user || user.role === 'CANDIDATE';
 
   const handleApply = () => {
     if (!user) {
@@ -78,9 +79,9 @@ export default function Home() {
         console.error('Error fetching jobs:', error);
         // נתוני גיבוי (Fallback) למקרה ששרת ה-Java כרגע כבוי
         setJobs([
-          { id: 1, title: 'Full Stack Java Developer', department: 'R&D', location: 'Tel Aviv', type: 'Full-time', isFallback: true },
-          { id: 2, title: 'Backend Engineer (Spring Boot)', department: 'Engineering', location: 'Hybrid', type: 'Full-time', isFallback: true },
-          { id: 3, title: 'Frontend Developer (React)', department: 'UI/UX', location: 'Remote', type: 'Full-time', isFallback: true },
+          { id: 1, title: 'Full Stack Java Developer', companyName: 'Shigoto', department: 'R&D', location: 'Tel Aviv', type: 'Full-time', isFallback: true },
+          { id: 2, title: 'Backend Engineer (Spring Boot)', companyName: 'Shigoto', department: 'Engineering', location: 'Hybrid', type: 'Full-time', isFallback: true },
+          { id: 3, title: 'Frontend Developer (React)', companyName: 'Shigoto', department: 'UI/UX', location: 'Remote', type: 'Full-time', isFallback: true },
         ]);
         setLoading(false);
       });
@@ -193,6 +194,7 @@ export default function Home() {
                           <Chip label={job.type || 'Full-time'} size="small" variant="outlined" />
                         </Stack>
                       </Stack>
+                      <Typography variant="overline" color="secondary.dark" fontWeight={800}>{job.companyName}</Typography>
                       <Typography variant="h6" component="h3" sx={{ mb: 1 }}>{job.title}</Typography>
                       <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 2, color: 'text.secondary' }}>
                         <LocationOnIcon sx={{ fontSize: 18 }} /><Typography variant="body2">{job.location || 'Israel'}</Typography>
@@ -217,6 +219,7 @@ export default function Home() {
             <Box>
               <Typography variant="overline" color="secondary.dark" fontWeight={800}>Job details</Typography>
               <Typography variant="h4" component="h2" sx={{ mt: 0.5 }}>{selectedJob?.title}</Typography>
+              <Typography color="text.secondary" sx={{ mt: 0.75 }}>{selectedJob?.companyName}</Typography>
             </Box>
             <IconButton aria-label="Close job details" onClick={() => setSelectedJob(null)}><CloseRoundedIcon /></IconButton>
           </Stack>
@@ -227,12 +230,12 @@ export default function Home() {
           </Stack>
           <Divider />
           <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>About the role</Typography>
-          <Typography color="text.secondary" sx={{ lineHeight: 1.8 }}>A detailed role description, responsibilities, and requirements will appear here when the existing job data provides them.</Typography>
+          <Typography color="text.secondary" sx={{ lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{selectedJob?.description || 'Role description unavailable.'}</Typography>
           <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>Recruitment process</Typography>
           <Typography color="text.secondary" sx={{ lineHeight: 1.8 }}>Candidates may move through application review, a home task, and technical interviews as appropriate for the role.</Typography>
-          <Box sx={{ mt: 4, p: 2, bgcolor: 'secondary.light', borderRadius: 1.5 }}><Typography variant="caption" color="secondary.dark" fontWeight={700}>Preview content — detailed backend job data is not connected here.</Typography></Box>
-          {applyMessage && <Alert severity="info" sx={{ mt: 2 }}>{applyMessage}</Alert>}
-          {user?.role === 'CANDIDATE' && applicationsLoading ? (
+          <Box sx={{ mt: 4, p: 2, bgcolor: 'secondary.light', borderRadius: 1.5 }}><Typography variant="caption" color="secondary.dark" fontWeight={700}>Published by {selectedJob?.companyName}</Typography></Box>
+          {canApply && applyMessage && <Alert severity="info" sx={{ mt: 2 }}>{applyMessage}</Alert>}
+          {canApply && (user?.role === 'CANDIDATE' && applicationsLoading ? (
             <Button variant="contained" fullWidth sx={{ mt: 3 }} disabled>Checking application status…</Button>
           ) : selectedApplication ? (
             <Button
@@ -245,7 +248,7 @@ export default function Home() {
             </Button>
           ) : (
             <Button variant="contained" fullWidth sx={{ mt: 3 }} onClick={handleApply} disabled={authLoading}>Apply to this role</Button>
-          )}
+          ))}
         </Box>
       </Drawer>
       <ProfileCompletionDialog
