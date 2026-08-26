@@ -1,6 +1,7 @@
 package com.shigoto.backend.repository;
 
 import com.shigoto.backend.entity.Application;
+import com.shigoto.backend.entity.Company;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -14,6 +15,8 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
 
     // שאילתת עזר: למצוא את כל המועמדויות ששייכות למשרה ספציפית
     List<Application> findByJobId(Long jobId);
+
+    List<Application> findByJobCompany(Company company);
 
     boolean existsByCandidateIdAndJobId(Long candidateId, Long jobId);
 }

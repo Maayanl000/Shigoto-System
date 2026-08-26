@@ -6,6 +6,7 @@ import com.shigoto.backend.dto.LoginRequestDTO;
 import com.shigoto.backend.dto.RegisterRequestDTO;
 import com.shigoto.backend.entity.Role;
 import com.shigoto.backend.entity.EmploymentType;
+import com.shigoto.backend.entity.Company;
 import com.shigoto.backend.entity.User;
 import com.shigoto.backend.exception.DuplicateEmailException;
 import com.shigoto.backend.repository.UserRepository;
@@ -196,6 +197,27 @@ class AuthServiceTest {
 
         assertThrows(AccessDeniedException.class,
                 () -> authService.getAuthenticatedCandidate(authentication));
+    }
+
+    @Test
+    void resolvesAuthenticatedHrWithCompany() {
+        Company company = Company.builder().id(4L).name("Shigoto").build();
+        User hr = User.builder().id(10L).email("hr@example.com").role(Role.HR).company(company).build();
+        Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
+                "hr@example.com", null, java.util.List.of());
+        when(userRepository.findByEmail("hr@example.com")).thenReturn(Optional.of(hr));
+
+        assertSame(hr, authService.getAuthenticatedHr(authentication));
+    }
+
+    @Test
+    void authenticatedHrWithoutCompanyIsRejected() {
+        User hr = User.builder().id(10L).email("hr@example.com").role(Role.HR).build();
+        Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
+                "hr@example.com", null, java.util.List.of());
+        when(userRepository.findByEmail("hr@example.com")).thenReturn(Optional.of(hr));
+
+        assertThrows(AccessDeniedException.class, () -> authService.getAuthenticatedHr(authentication));
     }
 
     @Test

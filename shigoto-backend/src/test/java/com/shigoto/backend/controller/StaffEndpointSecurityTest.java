@@ -102,7 +102,10 @@ class StaffEndpointSecurityTest {
 
     @Test
     void hrCanListApplications() throws Exception {
-        when(applicationService.getAllApplications()).thenReturn(List.of());
+        User hr = User.builder().id(1L).email("hr@example.com").role(Role.HR)
+                .company(com.shigoto.backend.entity.Company.builder().id(1L).name("Shigoto").build()).build();
+        when(authService.getAuthenticatedHr(any())).thenReturn(hr);
+        when(applicationService.getAllApplications(hr)).thenReturn(List.of());
 
         mockMvc.perform(get("/api/applications").with(user("hr").roles("HR")))
                 .andExpect(status().isOk())

@@ -101,6 +101,20 @@ public class AuthService {
         return user;
     }
 
+    public User getAuthenticatedHr(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new UsernameNotFoundException("Authenticated user was not found");
+        }
+        User user = findByEmail(authentication.getName());
+        if (user.getRole() != Role.HR) {
+            throw new AccessDeniedException("HR access is required");
+        }
+        if (user.getCompany() == null) {
+            throw new AccessDeniedException("HR user must belong to a company");
+        }
+        return user;
+    }
+
     public AuthenticatedUserResponseDTO updateCandidateProfile(
             CandidateProfileUpdateRequestDTO request,
             Authentication authentication) {

@@ -216,6 +216,36 @@ class ApplicationServiceTest {
         verify(applicationRepository).findByCandidateIdOrderByAppliedAtDesc(3L);
     }
 
+    @Test
+    void hrLoadsOnlyApplicationsReturnedForTheirCompany() {
+        Company hrCompany = Company.builder().id(10L).name("Shigoto").build();
+        Company otherCompany = Company.builder().id(11L).name("Other").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(hrCompany).build();
+        Application ownCompanyApplication = Application.builder()
+                .id(1L).candidate(candidate(3L))
+                .job(Job.builder().id(2L).company(hrCompany).build()).build();
+        Application otherCompanyApplication = Application.builder()
+                .id(2L).candidate(candidate(4L))
+                .job(Job.builder().id(3L).company(otherCompany).build()).build();
+        when(applicationRepository.findByJobCompany(hrCompany)).thenReturn(List.of(ownCompanyApplication));
+
+        var applications = applicationService.getAllApplications(hr);
+
+        assertEquals(List.of(1L), applications.stream().map(response -> response.id()).toList());
+        verify(applicationRepository).findByJobCompany(hrCompany);
+        verify(applicationRepository, never()).findAll();
+        org.junit.jupiter.api.Assertions.assertFalse(
+                applications.stream().anyMatch(response -> response.id().equals(otherCompanyApplication.getId())));
+    }
+
+    @Test
+    void hrWithoutCompanyCannotListApplications() {
+        User hr = User.builder().id(20L).role(Role.HR).build();
+
+        assertThrows(AccessDeniedException.class, () -> applicationService.getAllApplications(hr));
+        verify(applicationRepository, never()).findAll();
+    }
+
     private Application assignedApplication(LocalDateTime deadline) {
         Company company = Company.builder().name("Example Company").build();
         Job job = Job.builder().id(2L).title("Developer").company(company).location("Remote").build();

@@ -43,8 +43,9 @@ public class ApplicationController {
     }
 
     @GetMapping
-    public ResponseEntity<List<StaffApplicationResponseDTO>> getAllApplications() {
-        return ResponseEntity.ok(applicationService.getAllApplications());
+    public ResponseEntity<List<StaffApplicationResponseDTO>> getAllApplications(Authentication authentication) {
+        User hr = authService.getAuthenticatedHr(authentication);
+        return ResponseEntity.ok(applicationService.getAllApplications(hr));
     }
 
     @GetMapping("/mine")

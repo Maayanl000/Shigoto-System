@@ -100,8 +100,9 @@ public class ApplicationService {
     }
     // הוסיפי את הפונקציה הזו בתוך ApplicationService
 
-    public List<StaffApplicationResponseDTO> getAllApplications() {
-        return applicationRepository.findAll()
+    public List<StaffApplicationResponseDTO> getAllApplications(User hr) {
+        requireHrWithCompany(hr);
+        return applicationRepository.findByJobCompany(hr.getCompany())
                 .stream()
                 .map(StaffApplicationResponseDTO::from)
                 .toList();
@@ -177,6 +178,15 @@ public class ApplicationService {
     private void requireCandidateRole(User candidate) {
         if (candidate == null || candidate.getRole() != Role.CANDIDATE) {
             throw new AccessDeniedException("Candidate access is required");
+        }
+    }
+
+    private void requireHrWithCompany(User hr) {
+        if (hr == null || hr.getRole() != Role.HR) {
+            throw new AccessDeniedException("HR access is required");
+        }
+        if (hr.getCompany() == null) {
+            throw new AccessDeniedException("HR user must belong to a company");
         }
     }
 
