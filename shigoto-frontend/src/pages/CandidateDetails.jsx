@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Grid, Link, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Grid, Link, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
 import GitHubIcon from '@mui/icons-material/GitHub';
 import SaveRoundedIcon from '@mui/icons-material/SaveRounded';
@@ -16,6 +16,8 @@ const statusLabels = {
 const employmentLabels = {
   FULL_TIME: 'Full time', PART_TIME: 'Part time', STUDENT: 'Student position', INTERNSHIP: 'Internship',
 };
+
+const interviewTypeLabels = { HR: 'HR interview', TECHNICAL: 'Technical interview', MANAGER: 'Manager interview' };
 
 function display(value) {
   return value === null || value === undefined || value === '' ? 'Not provided' : value;
@@ -47,15 +49,38 @@ export default function CandidateDetails() {
   const [statusMessage, setStatusMessage] = useState('');
   const [taskDeadline, setTaskDeadline] = useState('');
   const [taskInstructions, setTaskInstructions] = useState('');
+  const [interviewers, setInterviewers] = useState([]);
+  const [interviewersLoading, setInterviewersLoading] = useState(true);
+  const [interviewersError, setInterviewersError] = useState('');
+  const [interviews, setInterviews] = useState([]);
+  const [interviewsLoading, setInterviewsLoading] = useState(true);
+  const [interviewType, setInterviewType] = useState('');
+  const [interviewerId, setInterviewerId] = useState('');
+  const [interviewTime, setInterviewTime] = useState('');
+  const [meetingLink, setMeetingLink] = useState('');
+  const [interviewBusy, setInterviewBusy] = useState(false);
+  const [interviewMessage, setInterviewMessage] = useState('');
+  const [editingInterviewId, setEditingInterviewId] = useState(null);
+  const [editingInterviewType, setEditingInterviewType] = useState('');
 
   const statusActions = record ? {
     APPLIED: [{ label: 'Move to HR interview', status: 'HR_INTERVIEW' }, { label: 'Reject', status: 'REJECTED' }],
     HR_INTERVIEW: [{ label: 'Reject', status: 'REJECTED' }],
     TASK_SENT: [{ label: 'Reject', status: 'REJECTED' }],
-    TASK_SUBMITTED: [{ label: 'Approve task', status: 'TASK_APPROVED' }, { label: 'Reject', status: 'REJECTED' }],
+    TASK_SUBMITTED: [{ label: 'Reject', status: 'REJECTED' }],
     TASK_APPROVED: [{ label: 'Reject', status: 'REJECTED' }],
     TECH_INTERVIEW_SCHEDULED: [{ label: 'Make offer', status: 'OFFER' }, { label: 'Reject', status: 'REJECTED' }],
   }[record.status] || [] : [];
+  const schedulableTypes = record ? {
+    APPLIED: ['HR'], TASK_APPROVED: ['TECHNICAL'], TECH_INTERVIEW_SCHEDULED: ['MANAGER'],
+  }[record.status] || [] : [];
+  const selectedInterviewType = schedulableTypes.includes(interviewType)
+    ? interviewType : schedulableTypes[0] || '';
+  const interviewGroups = [
+    { label: 'Upcoming', status: 'SCHEDULED' },
+    { label: 'Completed', status: 'COMPLETED' },
+    { label: 'Canceled', status: 'CANCELED' },
+  ];
 
   const loadRecord = useCallback(async () => {
     setLoading(true);
@@ -90,6 +115,36 @@ export default function CandidateDetails() {
       .finally(() => {
         if (active) setLoading(false);
       });
+    return () => { active = false; };
+  }, [applicationId]);
+
+  useEffect(() => {
+    let active = true;
+    api.get('/hr/interviewers')
+      .then((response) => { if (active) setInterviewers(Array.isArray(response.data) ? response.data : []); })
+      .catch((requestError) => { if (active) setInterviewersError(requestError.response?.data?.message || 'Could not load interviewers.'); })
+      .finally(() => { if (active) setInterviewersLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  const loadInterviews = useCallback(async () => {
+    setInterviewsLoading(true);
+    try {
+      const response = await api.get(`/hr/applications/${applicationId}/interviews`);
+      setInterviews(Array.isArray(response.data) ? response.data : []);
+    } catch {
+      setInterviews([]);
+    } finally {
+      setInterviewsLoading(false);
+    }
+  }, [applicationId]);
+
+  useEffect(() => {
+    let active = true;
+    api.get(`/hr/applications/${applicationId}/interviews`)
+      .then((response) => { if (active) setInterviews(Array.isArray(response.data) ? response.data : []); })
+      .catch(() => { if (active) setInterviews([]); })
+      .finally(() => { if (active) setInterviewsLoading(false); });
     return () => { active = false; };
   }, [applicationId]);
 
@@ -170,6 +225,79 @@ export default function CandidateDetails() {
     }
   };
 
+  const scheduleInterview = async () => {
+    const scheduledAt = new Date(interviewTime);
+    if ((!editingInterviewId && !selectedInterviewType) || !interviewerId || !interviewTime || Number.isNaN(scheduledAt.getTime())
+      || scheduledAt <= new Date() || !meetingLink.trim()) {
+      setInterviewMessage('Choose an interviewer, future time, type, and meeting URL.');
+      return;
+    }
+    try {
+      const url = new URL(meetingLink.trim());
+      if (!['http:', 'https:'].includes(url.protocol)) throw new Error('invalid');
+    } catch {
+      setInterviewMessage('Enter a valid HTTP or HTTPS meeting URL.');
+      return;
+    }
+    setInterviewBusy(true);
+    setInterviewMessage('');
+    try {
+      const payload = { interviewerId: Number(interviewerId), scheduledAt: interviewTime, meetingLink: meetingLink.trim() };
+      const response = editingInterviewId
+        ? await api.put(`/hr/interviews/${editingInterviewId}`, payload)
+        : await api.post(`/hr/applications/${applicationId}/interviews`, { ...payload, type: selectedInterviewType });
+      setRecord((current) => ({ ...current, status: response.data.applicationStatus }));
+      setInterviewerId('');
+      setInterviewTime('');
+      setMeetingLink('');
+      setEditingInterviewId(null);
+      setEditingInterviewType('');
+      setInterviewMessage(editingInterviewId ? 'Interview rescheduled.' : 'Interview scheduled.');
+      await loadInterviews();
+    } catch (requestError) {
+      setInterviewMessage(requestError.response?.data?.message || 'Could not schedule the interview.');
+    } finally {
+      setInterviewBusy(false);
+    }
+  };
+
+  const beginReschedule = (interview) => {
+    const date = new Date(interview.scheduledAt);
+    const localValue = Number.isNaN(date.getTime()) ? ''
+      : new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    setEditingInterviewId(interview.interviewId);
+    setEditingInterviewType(interview.type);
+    setInterviewerId(String(interview.interviewerId));
+    setInterviewTime(localValue);
+    setMeetingLink(interview.meetingLink || '');
+    setInterviewMessage('');
+  };
+
+  const closeReschedule = () => {
+    if (interviewBusy) return;
+    setEditingInterviewId(null);
+    setEditingInterviewType('');
+    setInterviewerId('');
+    setInterviewTime('');
+    setMeetingLink('');
+    setInterviewMessage('');
+  };
+
+  const cancelInterview = async (interviewId) => {
+    setInterviewBusy(true);
+    setInterviewMessage('');
+    try {
+      const response = await api.put(`/hr/interviews/${interviewId}/cancel`);
+      setRecord((current) => ({ ...current, status: response.data.applicationStatus }));
+      setInterviewMessage('Interview canceled.');
+      await loadInterviews();
+    } catch (requestError) {
+      setInterviewMessage(requestError.response?.data?.message || 'Could not cancel the interview.');
+    } finally {
+      setInterviewBusy(false);
+    }
+  };
+
   return (
     <PageSkeleton title="Candidate Record" description="Review this candidate in the context of one company job application.">
       {loading && <Box sx={{ minHeight: 320, display: 'grid', placeItems: 'center' }}><CircularProgress size={34} /></Box>}
@@ -227,6 +355,8 @@ export default function CandidateDetails() {
               <Typography variant="h6" gutterBottom>Task information</Typography>
               <Stack spacing={1.5}>
                 {record.taskInstructions && <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{record.taskInstructions}</Typography>}
+                {record.status === 'TASK_SUBMITTED' && <Alert severity="info">Submitted task is awaiting technical review.</Alert>}
+                {record.status === 'TASK_APPROVED' && <Alert severity="success">Technical review passed.</Alert>}
                 <Detail label="Deadline" value={formatDate(record.taskDeadline)} />
                 {record.taskRepoUrl ? <Link href={record.taskRepoUrl} target="_blank" rel="noopener noreferrer">Submitted repository</Link> : <Detail label="Repository" value={null} />}
                 {record.status === 'HR_INTERVIEW' && (
@@ -256,7 +386,53 @@ export default function CandidateDetails() {
           <Grid size={{ xs: 12, md: 6 }}>
             <Card sx={{ height: '100%' }}><CardContent>
               <Typography variant="h6" gutterBottom>Interview history</Typography>
-              <Typography variant="body2" color="text.secondary">Interview records will appear here when the HR interview flow is connected.</Typography>
+              {interviewsLoading ? <CircularProgress size={22} /> : interviews.length === 0
+                ? <Typography variant="body2" color="text.secondary">No interviews scheduled.</Typography>
+                : <Stack spacing={2}>{interviewGroups.map((group) => {
+                  const grouped = interviews.filter((interview) => interview.status === group.status);
+                  return grouped.length > 0 && <Box key={group.status}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>{group.label}</Typography>
+                    <Stack spacing={1}>{grouped.map((interview) => (
+                      <Box key={interview.interviewId} sx={{ p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1.5 }}>
+                        <Typography variant="subtitle2">{interviewTypeLabels[interview.type] || interview.type}</Typography>
+                        <Typography variant="body2">{interview.interviewerName}</Typography>
+                        <Typography variant="body2" color="text.secondary">{formatDate(interview.scheduledAt)} · {interview.status}</Typography>
+                        {interview.meetingLink && <Link href={interview.meetingLink} target="_blank" rel="noopener noreferrer">Meeting link</Link>}
+                        {interview.status === 'SCHEDULED' && <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                          <Button size="small" onClick={() => beginReschedule(interview)}>Reschedule</Button>
+                          <Button size="small" color="error" onClick={() => cancelInterview(interview.interviewId)}>Cancel</Button>
+                        </Stack>}
+                      </Box>
+                    ))}</Stack>
+                  </Box>;
+                })}</Stack>}
+            </CardContent></Card>
+          </Grid>
+
+          <Grid size={{ xs: 12 }}>
+            <Card><CardContent>
+              <Typography variant="h6" gutterBottom>Schedule interview</Typography>
+              {interviewersLoading ? <CircularProgress size={22} /> : interviewersError
+                ? <Alert severity="error">{interviewersError}</Alert> : interviewers.length === 0
+                  ? <Alert severity="info">No interviewers are available for this company.</Alert>
+                  : schedulableTypes.length === 0 && !editingInterviewId
+                    ? <Typography variant="body2" color="text.secondary">No interview can be scheduled at this application stage.</Typography>
+                    : <Stack spacing={1.5}>
+                      <TextField select label="Interview type" value={editingInterviewId ? 'Fixed' : selectedInterviewType} disabled={Boolean(editingInterviewId)} onChange={(event) => setInterviewType(event.target.value)}>
+                        {editingInterviewId && <MenuItem value="Fixed">Existing type (unchanged)</MenuItem>}
+                        {schedulableTypes.map((type) => <MenuItem key={type} value={type}>{interviewTypeLabels[type]}</MenuItem>)}
+                      </TextField>
+                      <TextField select label="Interviewer" value={interviewerId} onChange={(event) => setInterviewerId(event.target.value)}>
+                        {interviewers.map((interviewer) => <MenuItem key={interviewer.interviewerId} value={interviewer.interviewerId}>{interviewer.fullName} · {interviewer.email}</MenuItem>)}
+                      </TextField>
+                      <TextField label="Date and time" type="datetime-local" value={interviewTime} onChange={(event) => setInterviewTime(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
+                      <TextField label="Meeting URL" value={meetingLink} onChange={(event) => setMeetingLink(event.target.value)} placeholder="https://meet.example.com/interview" />
+                      <Stack direction="row" spacing={1}>
+                        <Button variant="contained" onClick={scheduleInterview} disabled={interviewBusy}>{interviewBusy ? 'Saving…' : editingInterviewId ? 'Save reschedule' : 'Schedule interview'}</Button>
+                        {editingInterviewId && <Button onClick={() => setEditingInterviewId(null)}>Cancel edit</Button>}
+                      </Stack>
+                    </Stack>}
+              {interviewMessage && <Alert severity={['Interview scheduled.', 'Interview rescheduled.', 'Interview canceled.'].includes(interviewMessage) ? 'success' : interviewMessage.startsWith('Select') ? 'info' : 'error'} sx={{ mt: 2 }}>{interviewMessage}</Alert>}
             </CardContent></Card>
           </Grid>
 
@@ -290,6 +466,25 @@ export default function CandidateDetails() {
               </Stack>
             </CardContent></Card>
           </Grid>
+
+          <Dialog open={Boolean(editingInterviewId)} onClose={closeReschedule} fullWidth maxWidth="sm">
+            <DialogTitle>Reschedule interview</DialogTitle>
+            <DialogContent>
+              <Stack spacing={2} sx={{ pt: 1 }}>
+                <TextField label="Interview type" value={interviewTypeLabels[editingInterviewType] || editingInterviewType} disabled />
+                <TextField select label="Interviewer" value={interviewerId} onChange={(event) => setInterviewerId(event.target.value)}>
+                  {interviewers.map((interviewer) => <MenuItem key={interviewer.interviewerId} value={interviewer.interviewerId}>{interviewer.fullName} · {interviewer.email}</MenuItem>)}
+                </TextField>
+                <TextField label="Date and time" type="datetime-local" value={interviewTime} onChange={(event) => setInterviewTime(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
+                <TextField label="Meeting URL" value={meetingLink} onChange={(event) => setMeetingLink(event.target.value)} placeholder="https://meet.example.com/interview" />
+                {interviewMessage && <Alert severity="error">{interviewMessage}</Alert>}
+              </Stack>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2.5 }}>
+              <Button onClick={closeReschedule} disabled={interviewBusy}>Cancel</Button>
+              <Button variant="contained" onClick={scheduleInterview} disabled={interviewBusy}>{interviewBusy ? 'Saving…' : 'Save changes'}</Button>
+            </DialogActions>
+          </Dialog>
         </Grid>
       )}
     </PageSkeleton>

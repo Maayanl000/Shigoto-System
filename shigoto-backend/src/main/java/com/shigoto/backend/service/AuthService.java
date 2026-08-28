@@ -115,6 +115,20 @@ public class AuthService {
         return user;
     }
 
+    public User getAuthenticatedInterviewer(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new UsernameNotFoundException("Authenticated user was not found");
+        }
+        User user = findByEmail(authentication.getName());
+        if (user.getRole() != Role.INTERVIEWER) {
+            throw new AccessDeniedException("Interviewer access is required");
+        }
+        if (user.getCompany() == null) {
+            throw new AccessDeniedException("Interviewer must belong to a company");
+        }
+        return user;
+    }
+
     public AuthenticatedUserResponseDTO updateCandidateProfile(
             CandidateProfileUpdateRequestDTO request,
             Authentication authentication) {

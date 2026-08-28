@@ -1,8 +1,10 @@
 package com.shigoto.backend.service;
 
 import com.shigoto.backend.dto.CandidateInterviewResponseDTO;
-import com.shigoto.backend.dto.InterviewRequestDTO;
-import com.shigoto.backend.dto.InterviewResponseDTO;
+import com.shigoto.backend.dto.HrInterviewerOptionDTO;
+import com.shigoto.backend.dto.HrInterviewScheduleRequestDTO;
+import com.shigoto.backend.dto.HrInterviewRescheduleRequestDTO;
+import com.shigoto.backend.dto.HrScheduledInterviewResponseDTO;
 import com.shigoto.backend.entity.*;
 import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.ApplicationRepository;
@@ -13,6 +15,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 
@@ -25,53 +30,124 @@ public class InterviewService {
     private final UserRepository userRepository;
 
     @Transactional
-    public InterviewResponseDTO scheduleInterview(InterviewRequestDTO request) {
+    public HrScheduledInterviewResponseDTO scheduleInterview(
+            Long applicationId, HrInterviewScheduleRequestDTO request, User hr) {
+        requireHrWithCompany(hr);
+        if (request == null || request.interviewerId() == null || request.type() == null
+                || request.scheduledAt() == null) {
+            throw new IllegalArgumentException("Interviewer, interview type, and scheduled time are required");
+        }
+        if (!request.scheduledAt().isAfter(LocalDateTime.now())) {
+            throw new IllegalArgumentException("Interview must be scheduled in the future");
+        }
+        String meetingLink = validateMeetingLink(request.meetingLink());
 
-        // 1. שליפת המועמדות מולטי-ואלידציה
-        Application application = applicationRepository.findById(request.applicationId())
-                .orElseThrow(() -> new RuntimeException("Application not found with id: " + request.applicationId()));
+        Application application = applicationRepository.findByIdAndJobCompany(applicationId, hr.getCompany())
+                .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
+        if (application.getStatus() == ApplicationStatus.OFFER
+                || application.getStatus() == ApplicationStatus.REJECTED) {
+            throw new IllegalArgumentException("Cannot schedule an interview for a terminal application");
+        }
+        validateInterviewStage(application.getStatus(), request.type());
 
-        // 2. שליפת המראיין (המשתמש) מהמערכת
-        User interviewer = userRepository.findById(request.interviewerId())
-                .orElseThrow(() -> new RuntimeException("Interviewer not found with id: " + request.interviewerId()));
+        User interviewer = userRepository.findByIdAndCompany(request.interviewerId(), hr.getCompany())
+                .orElseThrow(() -> new ResourceNotFoundException("Interviewer not found"));
         if (interviewer.getRole() != Role.INTERVIEWER) {
             throw new IllegalArgumentException("Selected user is not an interviewer");
         }
+        if (interviewRepository.existsByApplicationIdAndInterviewerIdAndScheduledAtAndStatusNot(
+                applicationId, interviewer.getId(), request.scheduledAt(), InterviewStatus.CANCELED)) {
+            throw new IllegalArgumentException("This interview is already scheduled");
+        }
+        if (interviewRepository.existsByInterviewerIdAndScheduledAtAndStatusNot(
+                interviewer.getId(), request.scheduledAt(), InterviewStatus.CANCELED)) {
+            throw new IllegalArgumentException("Interviewer already has an interview at this time");
+        }
 
-        // 3. בניית ישות הראיון בעזרת ה-Builder של Lombok
         Interview interview = Interview.builder()
                 .application(application)
                 .interviewer(interviewer)
                 .scheduledAt(request.scheduledAt())
-                .meetingLink(request.meetingLink())
+                .meetingLink(meetingLink)
                 .type(request.type())
-                .status(InterviewStatus.SCHEDULED) // סטטוס התחלתי אוטומטי
+                .status(InterviewStatus.SCHEDULED)
                 .build();
-
-        // 4. עדכון הסטטוס של המועמדות לפי סוג הראיון
         if (request.type() == InterviewType.TECHNICAL) {
             application.setStatus(ApplicationStatus.TECH_INTERVIEW_SCHEDULED);
         } else if (request.type() == InterviewType.HR) {
             application.setStatus(ApplicationStatus.HR_INTERVIEW);
         }
-
-        // שמירת המועמדות המעודכנת
         applicationRepository.save(application);
+        return HrScheduledInterviewResponseDTO.from(interviewRepository.save(interview));
+    }
 
-        // 5. שמירת הראיון במסד הנתונים
-        Interview savedInterview = interviewRepository.save(interview);
+    @Transactional(readOnly = true)
+    public List<HrInterviewerOptionDTO> getCompanyInterviewers(User hr) {
+        requireHrWithCompany(hr);
+        return userRepository.findByRoleAndCompanyOrderByFirstNameAscLastNameAsc(Role.INTERVIEWER, hr.getCompany())
+                .stream().map(HrInterviewerOptionDTO::from).toList();
+    }
 
-        // 6. המרה ל-DTO והחזרה ללקוח (נניח שלמשתמש יש שדה אימייל לזיהוי, אם יש לך FirstName/LastName שחקי עם זה)
-        return new InterviewResponseDTO(
-                savedInterview.getId(),
-                savedInterview.getApplication().getId(),
-                savedInterview.getInterviewer().getEmail(), // כאן אנחנו מחזירים רק את האימייל/שם כדי לא לחשוף סיסמא
-                savedInterview.getScheduledAt(),
-                savedInterview.getMeetingLink(),
-                savedInterview.getFeedback(),
-                savedInterview.getType(),
-                savedInterview.getStatus()
-        );
+    @Transactional
+    public HrScheduledInterviewResponseDTO rescheduleInterview(
+            Long interviewId, HrInterviewRescheduleRequestDTO request, User hr) {
+        requireHrWithCompany(hr);
+        if (request == null || request.interviewerId() == null || request.scheduledAt() == null) {
+            throw new IllegalArgumentException("Interviewer and scheduled time are required");
+        }
+        if (!request.scheduledAt().isAfter(LocalDateTime.now())) {
+            throw new IllegalArgumentException("Interview must be scheduled in the future");
+        }
+        String meetingLink = validateMeetingLink(request.meetingLink());
+        Interview interview = findHrCompanyInterview(interviewId, hr);
+        if (interview.getStatus() != InterviewStatus.SCHEDULED) {
+            throw new IllegalArgumentException("Only a scheduled interview can be rescheduled");
+        }
+        User interviewer = userRepository.findByIdAndCompany(request.interviewerId(), hr.getCompany())
+                .orElseThrow(() -> new ResourceNotFoundException("Interviewer not found"));
+        if (interviewer.getRole() != Role.INTERVIEWER) {
+            throw new IllegalArgumentException("Selected user is not an interviewer");
+        }
+        Long applicationId = interview.getApplication().getId();
+        if (interviewRepository.existsByApplicationIdAndInterviewerIdAndScheduledAtAndStatusNotAndIdNot(
+                applicationId, interviewer.getId(), request.scheduledAt(), InterviewStatus.CANCELED, interviewId)) {
+            throw new IllegalArgumentException("This interview is already scheduled");
+        }
+        if (interviewRepository.existsByInterviewerIdAndScheduledAtAndStatusNotAndIdNot(
+                interviewer.getId(), request.scheduledAt(), InterviewStatus.CANCELED, interviewId)) {
+            throw new IllegalArgumentException("Interviewer already has an interview at this time");
+        }
+        interview.setInterviewer(interviewer);
+        interview.setScheduledAt(request.scheduledAt());
+        interview.setMeetingLink(meetingLink);
+        return HrScheduledInterviewResponseDTO.from(interviewRepository.save(interview));
+    }
+
+    @Transactional
+    public HrScheduledInterviewResponseDTO cancelInterview(Long interviewId, User hr) {
+        Interview interview = findHrCompanyInterview(interviewId, hr);
+        if (interview.getStatus() != InterviewStatus.SCHEDULED) {
+            throw new IllegalArgumentException("Only a scheduled interview can be canceled");
+        }
+        interview.setStatus(InterviewStatus.CANCELED);
+        Application application = interview.getApplication();
+        if (interview.getType() == InterviewType.TECHNICAL
+                && application.getStatus() == ApplicationStatus.TECH_INTERVIEW_SCHEDULED
+                && !interviewRepository.existsByApplicationIdAndTypeAndStatusAndIdNot(
+                        application.getId(), InterviewType.TECHNICAL, InterviewStatus.SCHEDULED, interviewId)) {
+            application.setStatus(ApplicationStatus.TASK_APPROVED);
+            applicationRepository.save(application);
+        }
+        return HrScheduledInterviewResponseDTO.from(interviewRepository.save(interview));
+    }
+
+    @Transactional(readOnly = true)
+    public List<HrScheduledInterviewResponseDTO> getHrApplicationInterviews(Long applicationId, User hr) {
+        requireHrWithCompany(hr);
+        applicationRepository.findByIdAndJobCompany(applicationId, hr.getCompany())
+                .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
+        return interviewRepository.findByApplicationIdOrderByScheduledAtAsc(applicationId)
+                .stream().map(HrScheduledInterviewResponseDTO::from).toList();
     }
 
     @Transactional(readOnly = true)
@@ -104,5 +180,50 @@ public class InterviewService {
                 interview.getType(),
                 interview.getStatus()
         );
+    }
+
+    private void requireHrWithCompany(User hr) {
+        if (hr == null || hr.getRole() != Role.HR) {
+            throw new AccessDeniedException("HR access is required");
+        }
+        if (hr.getCompany() == null) {
+            throw new AccessDeniedException("HR user must belong to a company");
+        }
+    }
+
+    private Interview findHrCompanyInterview(Long interviewId, User hr) {
+        requireHrWithCompany(hr);
+        return interviewRepository.findByIdAndApplicationJobCompany(interviewId, hr.getCompany())
+                .orElseThrow(() -> new ResourceNotFoundException("Interview not found"));
+    }
+
+    private void validateInterviewStage(ApplicationStatus status, InterviewType type) {
+        if (type == InterviewType.HR && status != ApplicationStatus.APPLIED) {
+            throw new IllegalArgumentException("HR interview can only be scheduled for an applied application");
+        }
+        if (type == InterviewType.TECHNICAL && status != ApplicationStatus.TASK_APPROVED) {
+            throw new IllegalArgumentException("Technical interview requires an approved home task");
+        }
+        if (type == InterviewType.MANAGER && status != ApplicationStatus.TECH_INTERVIEW_SCHEDULED) {
+            throw new IllegalArgumentException("Manager interview requires a scheduled technical interview stage");
+        }
+    }
+
+    private String validateMeetingLink(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("Meeting link is required");
+        }
+        String link = value.trim();
+        try {
+            URI uri = new URI(link);
+            boolean validScheme = "http".equalsIgnoreCase(uri.getScheme())
+                    || "https".equalsIgnoreCase(uri.getScheme());
+            if (!validScheme || uri.getHost() == null) {
+                throw new IllegalArgumentException("Meeting link must be a valid HTTP or HTTPS URL");
+            }
+            return link;
+        } catch (URISyntaxException ex) {
+            throw new IllegalArgumentException("Meeting link must be a valid HTTP or HTTPS URL");
+        }
     }
 }

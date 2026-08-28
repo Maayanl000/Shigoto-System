@@ -4,10 +4,12 @@ import com.shigoto.backend.dto.ApplicationResponseDTO;
 import com.shigoto.backend.dto.HrApplicationSummaryDTO;
 import com.shigoto.backend.dto.HrApplicationDetailsDTO;
 import com.shigoto.backend.dto.StaffApplicationResponseDTO;
+import com.shigoto.backend.dto.InterviewerSubmittedTaskDTO;
 import com.shigoto.backend.entity.Application;
 import com.shigoto.backend.entity.ApplicationStatus; // הנה ה-import הנקי שהוספנו!
 import com.shigoto.backend.entity.JobStatus;
 import com.shigoto.backend.entity.Role;
+import com.shigoto.backend.entity.TaskReviewDecision;
 import com.shigoto.backend.entity.User;
 import com.shigoto.backend.exception.DuplicateApplicationException;
 import com.shigoto.backend.exception.ResourceNotFoundException;
@@ -157,10 +159,35 @@ public class ApplicationService {
         }
         return switch (currentStatus) {
             case APPLIED -> targetStatus == ApplicationStatus.HR_INTERVIEW;
-            case TASK_SUBMITTED -> targetStatus == ApplicationStatus.TASK_APPROVED;
             case TECH_INTERVIEW_SCHEDULED -> targetStatus == ApplicationStatus.OFFER;
             default -> false;
         };
+    }
+
+    @Transactional(readOnly = true)
+    public List<InterviewerSubmittedTaskDTO> getSubmittedTasksForInterviewer(User interviewer) {
+        requireInterviewerWithCompany(interviewer);
+        return applicationRepository.findByStatusAndJobCompanyOrderByAppliedAtAsc(
+                        ApplicationStatus.TASK_SUBMITTED, interviewer.getCompany())
+                .stream().map(InterviewerSubmittedTaskDTO::from).toList();
+    }
+
+    @Transactional
+    public InterviewerSubmittedTaskDTO reviewSubmittedTask(
+            Long applicationId, TaskReviewDecision decision, User interviewer) {
+        requireInterviewerWithCompany(interviewer);
+        if (decision == null) {
+            throw new IllegalArgumentException("Task review decision is required");
+        }
+        Application application = applicationRepository.findByIdAndJobCompany(
+                        applicationId, interviewer.getCompany())
+                .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
+        if (application.getStatus() != ApplicationStatus.TASK_SUBMITTED) {
+            throw new IllegalArgumentException("Only a submitted task can be reviewed");
+        }
+        application.setStatus(decision == TaskReviewDecision.APPROVE
+                ? ApplicationStatus.TASK_APPROVED : ApplicationStatus.REJECTED);
+        return InterviewerSubmittedTaskDTO.from(applicationRepository.save(application));
     }
 
     public List<StaffApplicationResponseDTO> getApplicationsByCandidate(Long candidateId) {
@@ -248,6 +275,15 @@ public class ApplicationService {
         }
         if (hr.getCompany() == null) {
             throw new AccessDeniedException("HR user must belong to a company");
+        }
+    }
+
+    private void requireInterviewerWithCompany(User interviewer) {
+        if (interviewer == null || interviewer.getRole() != Role.INTERVIEWER) {
+            throw new AccessDeniedException("Interviewer access is required");
+        }
+        if (interviewer.getCompany() == null) {
+            throw new AccessDeniedException("Interviewer must belong to a company");
         }
     }
 

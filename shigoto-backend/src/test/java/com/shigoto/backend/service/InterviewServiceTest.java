@@ -1,12 +1,16 @@
 package com.shigoto.backend.service;
 
+import com.shigoto.backend.dto.HrInterviewScheduleRequestDTO;
+import com.shigoto.backend.dto.HrInterviewRescheduleRequestDTO;
 import com.shigoto.backend.entity.Application;
+import com.shigoto.backend.entity.ApplicationStatus;
+import com.shigoto.backend.entity.Company;
 import com.shigoto.backend.entity.Interview;
 import com.shigoto.backend.entity.InterviewStatus;
 import com.shigoto.backend.entity.InterviewType;
-import com.shigoto.backend.entity.User;
+import com.shigoto.backend.entity.Job;
 import com.shigoto.backend.entity.Role;
-import com.shigoto.backend.dto.InterviewRequestDTO;
+import com.shigoto.backend.entity.User;
 import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.ApplicationRepository;
 import com.shigoto.backend.repository.InterviewRepository;
@@ -20,15 +24,15 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class InterviewServiceTest {
-
     private InterviewRepository interviewRepository;
     private ApplicationRepository applicationRepository;
     private UserRepository userRepository;
@@ -39,93 +43,297 @@ class InterviewServiceTest {
         interviewRepository = mock(InterviewRepository.class);
         applicationRepository = mock(ApplicationRepository.class);
         userRepository = mock(UserRepository.class);
-        interviewService = new InterviewService(
-                interviewRepository, applicationRepository, userRepository);
+        interviewService = new InterviewService(interviewRepository, applicationRepository, userRepository);
     }
 
     @Test
-    void returnsCandidateSafeInterviewsInRepositoryOrder() {
-        User candidate = candidate(3L);
-        Application application = Application.builder().id(7L).candidate(candidate).build();
-        User interviewer = User.builder().firstName("Dana").lastName("Levi").build();
-        LocalDateTime firstTime = LocalDateTime.of(2026, 8, 25, 10, 0);
-        LocalDateTime secondTime = LocalDateTime.of(2026, 8, 27, 14, 30);
-        Interview first = interview(1L, application, interviewer, firstTime, "https://zoom.us/j/first");
-        Interview second = interview(2L, application, interviewer, secondTime, null);
+    void hrReceivesOnlyRepositoryScopedCompanyInterviewers() {
+        Company company = company(1L, "Wix");
+        User hr = hr(company);
+        User interviewer = interviewer(5L, company);
+        when(userRepository.findByRoleAndCompanyOrderByFirstNameAscLastNameAsc(Role.INTERVIEWER, company))
+                .thenReturn(List.of(interviewer));
 
+        var result = interviewService.getCompanyInterviewers(hr);
+
+        assertEquals(List.of(5L), result.stream().map(option -> option.interviewerId()).toList());
+        assertEquals("Dana Levi", result.getFirst().fullName());
+    }
+
+    @Test
+    void hrWithoutCompanyCannotListInterviewersOrSchedule() {
+        User hr = User.builder().role(Role.HR).build();
+        assertThrows(AccessDeniedException.class, () -> interviewService.getCompanyInterviewers(hr));
+        assertThrows(AccessDeniedException.class, () ->
+                interviewService.scheduleInterview(1L, validRequest(5L, InterviewType.TECHNICAL), hr));
+        verify(userRepository, never()).findByRoleAndCompanyOrderByFirstNameAscLastNameAsc(any(), any());
+    }
+
+    @Test
+    void ownCompanyTechnicalInterviewSchedulesAndUpdatesApplication() {
+        Company company = company(1L, "Wix");
+        User hr = hr(company);
+        User interviewer = interviewer(5L, company);
+        Application application = application(company, ApplicationStatus.TASK_APPROVED);
+        HrInterviewScheduleRequestDTO request = validRequest(5L, InterviewType.TECHNICAL);
+        stubScopedEntities(company, application, interviewer, request);
+        when(interviewRepository.save(any())).thenAnswer(invocation -> {
+            Interview interview = invocation.getArgument(0);
+            interview.setId(9L);
+            return interview;
+        });
+
+        var response = interviewService.scheduleInterview(7L, request, hr);
+
+        assertEquals(ApplicationStatus.TECH_INTERVIEW_SCHEDULED, application.getStatus());
+        assertEquals(ApplicationStatus.TECH_INTERVIEW_SCHEDULED, response.applicationStatus());
+        assertEquals(InterviewStatus.SCHEDULED, response.status());
+        verify(applicationRepository).save(application);
+        verify(interviewRepository).save(any(Interview.class));
+    }
+
+    @Test
+    void crossCompanyApplicationIsNotFound() {
+        Company company = company(1L, "Wix");
+        when(applicationRepository.findByIdAndJobCompany(7L, company)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> interviewService.scheduleInterview(
+                7L, validRequest(5L, InterviewType.TECHNICAL), hr(company)));
+        verify(interviewRepository, never()).save(any());
+    }
+
+    @Test
+    void crossCompanyInterviewerIsNotFound() {
+        Company company = company(1L, "Wix");
+        Application application = application(company, ApplicationStatus.TASK_APPROVED);
+        HrInterviewScheduleRequestDTO request = validRequest(50L, InterviewType.TECHNICAL);
+        when(applicationRepository.findByIdAndJobCompany(7L, company)).thenReturn(Optional.of(application));
+        when(userRepository.findByIdAndCompany(50L, company)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () ->
+                interviewService.scheduleInterview(7L, request, hr(company)));
+    }
+
+    @Test
+    void sameCompanyNonInterviewerIsRejected() {
+        Company company = company(1L, "Wix");
+        Application application = application(company, ApplicationStatus.TASK_APPROVED);
+        User user = User.builder().id(5L).role(Role.HR).company(company).build();
+        HrInterviewScheduleRequestDTO request = validRequest(5L, InterviewType.TECHNICAL);
+        stubScopedEntities(company, application, user, request);
+        assertThrows(IllegalArgumentException.class, () ->
+                interviewService.scheduleInterview(7L, request, hr(company)));
+    }
+
+    @Test
+    void pastDateAndInvalidMeetingUrlAreRejected() {
+        Company company = company(1L, "Wix");
+        HrInterviewScheduleRequestDTO past = new HrInterviewScheduleRequestDTO(
+                5L, InterviewType.TECHNICAL, LocalDateTime.now().minusMinutes(1), "https://meet.example.com/1");
+        assertThrows(IllegalArgumentException.class, () -> interviewService.scheduleInterview(7L, past, hr(company)));
+        HrInterviewScheduleRequestDTO invalidLink = new HrInterviewScheduleRequestDTO(
+                5L, InterviewType.TECHNICAL, LocalDateTime.now().plusDays(1), "javascript:alert(1)");
+        assertThrows(IllegalArgumentException.class, () ->
+                interviewService.scheduleInterview(7L, invalidLink, hr(company)));
+    }
+
+    @Test
+    void terminalApplicationCannotBeScheduled() {
+        Company company = company(1L, "Wix");
+        Application application = application(company, ApplicationStatus.REJECTED);
+        when(applicationRepository.findByIdAndJobCompany(7L, company)).thenReturn(Optional.of(application));
+        assertThrows(IllegalArgumentException.class, () -> interviewService.scheduleInterview(
+                7L, validRequest(5L, InterviewType.TECHNICAL), hr(company)));
+    }
+
+    @Test
+    void duplicateAndInterviewerTimeConflictAreRejected() {
+        Company company = company(1L, "Wix");
+        Application application = application(company, ApplicationStatus.TASK_APPROVED);
+        User interviewer = interviewer(5L, company);
+        HrInterviewScheduleRequestDTO request = validRequest(5L, InterviewType.TECHNICAL);
+        stubScopedEntities(company, application, interviewer, request);
+        when(interviewRepository.existsByApplicationIdAndInterviewerIdAndScheduledAtAndStatusNot(
+                7L, 5L, request.scheduledAt(), InterviewStatus.CANCELED)).thenReturn(true);
+        assertThrows(IllegalArgumentException.class, () ->
+                interviewService.scheduleInterview(7L, request, hr(company)));
+
+        when(interviewRepository.existsByApplicationIdAndInterviewerIdAndScheduledAtAndStatusNot(
+                7L, 5L, request.scheduledAt(), InterviewStatus.CANCELED)).thenReturn(false);
+        when(interviewRepository.existsByInterviewerIdAndScheduledAtAndStatusNot(
+                5L, request.scheduledAt(), InterviewStatus.CANCELED)).thenReturn(true);
+        assertThrows(IllegalArgumentException.class, () ->
+                interviewService.scheduleInterview(7L, request, hr(company)));
+    }
+
+    @Test
+    void ownCompanyHrReschedulesScheduledInterview() {
+        Company company = company(1L, "Wix");
+        User replacement = interviewer(6L, company);
+        Interview interview = scheduledInterview(company, InterviewStatus.SCHEDULED);
+        LocalDateTime newTime = LocalDateTime.now().plusDays(3);
+        when(interviewRepository.findByIdAndApplicationJobCompany(9L, company)).thenReturn(Optional.of(interview));
+        when(userRepository.findByIdAndCompany(6L, company)).thenReturn(Optional.of(replacement));
+        when(interviewRepository.save(interview)).thenReturn(interview);
+
+        var response = interviewService.rescheduleInterview(9L,
+                new HrInterviewRescheduleRequestDTO(6L, newTime, " https://meet.example.com/new "), hr(company));
+
+        assertEquals(6L, response.interviewerId());
+        assertEquals(newTime, response.scheduledAt());
+        assertEquals("https://meet.example.com/new", response.meetingLink());
+        verify(interviewRepository).save(interview);
+    }
+
+    @Test
+    void crossCompanyHrCannotRescheduleInterview() {
+        Company company = company(1L, "Wix");
+        when(interviewRepository.findByIdAndApplicationJobCompany(9L, company)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> interviewService.rescheduleInterview(
+                9L, validReschedule(5L), hr(company)));
+    }
+
+    @Test
+    void rescheduleRejectsWrongCompanyAndNonInterviewer() {
+        Company company = company(1L, "Wix");
+        Interview interview = scheduledInterview(company, InterviewStatus.SCHEDULED);
+        when(interviewRepository.findByIdAndApplicationJobCompany(9L, company)).thenReturn(Optional.of(interview));
+        when(userRepository.findByIdAndCompany(50L, company)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> interviewService.rescheduleInterview(
+                9L, validReschedule(50L), hr(company)));
+
+        User nonInterviewer = User.builder().id(6L).role(Role.HR).company(company).build();
+        when(userRepository.findByIdAndCompany(6L, company)).thenReturn(Optional.of(nonInterviewer));
+        assertThrows(IllegalArgumentException.class, () -> interviewService.rescheduleInterview(
+                9L, validReschedule(6L), hr(company)));
+    }
+
+    @Test
+    void rescheduleRejectsPastTimeAndInvalidMeetingUrl() {
+        Company company = company(1L, "Wix");
+        assertThrows(IllegalArgumentException.class, () -> interviewService.rescheduleInterview(9L,
+                new HrInterviewRescheduleRequestDTO(5L, LocalDateTime.now().minusMinutes(1),
+                        "https://meet.example.com/1"), hr(company)));
+        assertThrows(IllegalArgumentException.class, () -> interviewService.rescheduleInterview(9L,
+                new HrInterviewRescheduleRequestDTO(5L, LocalDateTime.now().plusDays(1),
+                        "not-a-url"), hr(company)));
+    }
+
+    @Test
+    void completedAndCanceledInterviewsCannotBeRescheduled() {
+        Company company = company(1L, "Wix");
+        for (InterviewStatus status : List.of(InterviewStatus.COMPLETED, InterviewStatus.CANCELED)) {
+            Interview interview = scheduledInterview(company, status);
+            when(interviewRepository.findByIdAndApplicationJobCompany(9L, company))
+                    .thenReturn(Optional.of(interview));
+            assertThrows(IllegalArgumentException.class, () -> interviewService.rescheduleInterview(
+                    9L, validReschedule(5L), hr(company)));
+        }
+    }
+
+    @Test
+    void ownCompanyHrCancelsScheduledTechnicalInterviewAndPreservesHistory() {
+        Company company = company(1L, "Wix");
+        Interview interview = scheduledInterview(company, InterviewStatus.SCHEDULED);
+        when(interviewRepository.findByIdAndApplicationJobCompany(9L, company)).thenReturn(Optional.of(interview));
+        when(interviewRepository.save(interview)).thenReturn(interview);
+
+        var response = interviewService.cancelInterview(9L, hr(company));
+
+        assertEquals(InterviewStatus.CANCELED, response.status());
+        assertEquals(ApplicationStatus.TASK_APPROVED, interview.getApplication().getStatus());
+        verify(interviewRepository).save(interview);
+        verify(interviewRepository, never()).delete(any());
+    }
+
+    @Test
+    void repeatedAndCompletedCancelAreRejected() {
+        Company company = company(1L, "Wix");
+        for (InterviewStatus status : List.of(InterviewStatus.CANCELED, InterviewStatus.COMPLETED)) {
+            Interview interview = scheduledInterview(company, status);
+            when(interviewRepository.findByIdAndApplicationJobCompany(9L, company))
+                    .thenReturn(Optional.of(interview));
+            assertThrows(IllegalArgumentException.class, () -> interviewService.cancelInterview(9L, hr(company)));
+        }
+        verify(interviewRepository, never()).save(any());
+    }
+
+    @Test
+    void candidateReadsScheduledInterviewsWithoutFeedback() {
+        Company company = company(1L, "Wix");
+        User candidate = User.builder().id(3L).role(Role.CANDIDATE).build();
+        Application application = application(company, ApplicationStatus.TECH_INTERVIEW_SCHEDULED);
+        application.setCandidate(candidate);
+        Interview interview = Interview.builder().id(9L).application(application).interviewer(interviewer(5L, company))
+                .scheduledAt(LocalDateTime.now().plusDays(1)).meetingLink("https://meet.example.com/1")
+                .feedback("private feedback").type(InterviewType.TECHNICAL).status(InterviewStatus.CANCELED).build();
+        Interview completed = Interview.builder().id(10L).application(application).interviewer(interviewer(5L, company))
+                .scheduledAt(LocalDateTime.now().minusDays(1)).meetingLink("https://meet.example.com/2")
+                .feedback("more private feedback").type(InterviewType.HR).status(InterviewStatus.COMPLETED).build();
         when(applicationRepository.findById(7L)).thenReturn(Optional.of(application));
-        when(interviewRepository.findByApplicationIdOrderByScheduledAtAsc(7L))
-                .thenReturn(List.of(first, second));
+        when(interviewRepository.findByApplicationIdOrderByScheduledAtAsc(7L)).thenReturn(List.of(completed, interview));
 
         var response = interviewService.getCandidateInterviews(7L, candidate);
 
-        assertEquals(List.of(1L, 2L), response.stream().map(item -> item.id()).toList());
+        assertEquals(2, response.size());
         assertEquals("Dana Levi", response.getFirst().interviewerName());
-        assertEquals("https://zoom.us/j/first", response.getFirst().meetingLink());
-        assertEquals(firstTime, response.getFirst().scheduledAt());
+        assertEquals(InterviewStatus.COMPLETED, response.getFirst().status());
+        assertEquals(InterviewStatus.CANCELED, response.get(1).status());
+        assertFalse(List.of(response.getFirst().getClass().getRecordComponents()).stream()
+                .anyMatch(component -> component.getName().equals("feedback")));
     }
 
     @Test
-    void returnsEmptyListWhenApplicationHasNoInterviews() {
-        User candidate = candidate(3L);
-        Application application = Application.builder().id(7L).candidate(candidate).build();
-        when(applicationRepository.findById(7L)).thenReturn(Optional.of(application));
-        when(interviewRepository.findByApplicationIdOrderByScheduledAtAsc(7L))
-                .thenReturn(List.of());
+    void hrReadsScheduledInterviewsWithInterviewerIdForRescheduling() {
+        Company company = company(1L, "Wix");
+        Application application = application(company, ApplicationStatus.TECH_INTERVIEW_SCHEDULED);
+        Interview interview = Interview.builder().id(9L).application(application).interviewer(interviewer(5L, company))
+                .scheduledAt(LocalDateTime.now().plusDays(1)).meetingLink("https://meet.example.com/1")
+                .type(InterviewType.TECHNICAL).status(InterviewStatus.SCHEDULED).build();
+        when(applicationRepository.findByIdAndJobCompany(7L, company)).thenReturn(Optional.of(application));
+        when(interviewRepository.findByApplicationIdOrderByScheduledAtAsc(7L)).thenReturn(List.of(interview));
 
-        assertTrue(interviewService.getCandidateInterviews(7L, candidate).isEmpty());
+        var response = interviewService.getHrApplicationInterviews(7L, hr(company));
+
+        assertEquals(9L, response.getFirst().interviewId());
+        assertEquals(5L, response.getFirst().interviewerId());
     }
 
-    @Test
-    void rejectsMissingApplicationBeforeQueryingInterviews() {
-        when(applicationRepository.findById(99L)).thenReturn(Optional.empty());
-
-        assertThrows(ResourceNotFoundException.class,
-                () -> interviewService.getCandidateInterviews(99L, candidate(3L)));
-        verify(interviewRepository, never()).findByApplicationIdOrderByScheduledAtAsc(99L);
+    private void stubScopedEntities(Company company, Application application, User interviewer,
+                                    HrInterviewScheduleRequestDTO request) {
+        when(applicationRepository.findByIdAndJobCompany(7L, company)).thenReturn(Optional.of(application));
+        when(userRepository.findByIdAndCompany(request.interviewerId(), company)).thenReturn(Optional.of(interviewer));
     }
 
-    @Test
-    void rejectsInterviewsForAnotherCandidatesApplication() {
-        Application application = Application.builder().id(7L).candidate(candidate(3L)).build();
-        when(applicationRepository.findById(7L)).thenReturn(Optional.of(application));
-
-        assertThrows(AccessDeniedException.class,
-                () -> interviewService.getCandidateInterviews(7L, candidate(4L)));
-        verify(interviewRepository, never()).findByApplicationIdOrderByScheduledAtAsc(7L);
+    private HrInterviewScheduleRequestDTO validRequest(Long interviewerId, InterviewType type) {
+        return new HrInterviewScheduleRequestDTO(
+                interviewerId, type, LocalDateTime.now().plusDays(2), "https://meet.example.com/interview");
     }
 
-    @Test
-    void schedulingRejectsAUserWhoIsNotAnInterviewer() {
-        Application application = Application.builder().id(7L).candidate(candidate(3L)).build();
-        when(applicationRepository.findById(7L)).thenReturn(Optional.of(application));
-        when(userRepository.findById(4L)).thenReturn(Optional.of(candidate(4L)));
-        InterviewRequestDTO request = new InterviewRequestDTO(
-                7L, 4L, LocalDateTime.now().plusDays(1), "https://meet.example/test", InterviewType.TECHNICAL);
-
-        assertThrows(IllegalArgumentException.class, () -> interviewService.scheduleInterview(request));
-        verify(interviewRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    private HrInterviewRescheduleRequestDTO validReschedule(Long interviewerId) {
+        return new HrInterviewRescheduleRequestDTO(
+                interviewerId, LocalDateTime.now().plusDays(2), "https://meet.example.com/rescheduled");
     }
 
-    private Interview interview(
-            Long id,
-            Application application,
-            User interviewer,
-            LocalDateTime scheduledAt,
-            String meetingLink) {
-        return Interview.builder()
-                .id(id)
-                .application(application)
-                .interviewer(interviewer)
-                .scheduledAt(scheduledAt)
-                .meetingLink(meetingLink)
-                .type(InterviewType.TECHNICAL)
-                .status(InterviewStatus.SCHEDULED)
-                .feedback("candidate must never receive this")
-                .build();
+    private Interview scheduledInterview(Company company, InterviewStatus status) {
+        Application application = application(company, ApplicationStatus.TECH_INTERVIEW_SCHEDULED);
+        return Interview.builder().id(9L).application(application).interviewer(interviewer(5L, company))
+                .scheduledAt(LocalDateTime.now().plusDays(1)).meetingLink("https://meet.example.com/original")
+                .type(InterviewType.TECHNICAL).status(status).build();
     }
 
-    private User candidate(Long id) {
-        return User.builder().id(id).role(Role.CANDIDATE).build();
+    private Application application(Company company, ApplicationStatus status) {
+        return Application.builder().id(7L).job(Job.builder().company(company).build()).status(status).build();
+    }
+
+    private User interviewer(Long id, Company company) {
+        return User.builder().id(id).firstName("Dana").lastName("Levi").email("dana@example.com")
+                .role(Role.INTERVIEWER).company(company).build();
+    }
+
+    private User hr(Company company) {
+        return User.builder().id(1L).role(Role.HR).company(company).build();
+    }
+
+    private Company company(Long id, String name) {
+        return Company.builder().id(id).name(name).build();
     }
 }

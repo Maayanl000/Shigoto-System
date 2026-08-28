@@ -157,6 +157,8 @@ export default function CandidateApplicationDetails() {
     && !taskDeadlineExpired
     && !isTaskSubmitted;
   const isInterviewLoading = loadedInterviewApplicationId !== applicationId;
+  const upcomingInterviews = interviews.filter((interview) => interview.status === 'SCHEDULED');
+  const interviewHistory = interviews.filter((interview) => ['COMPLETED', 'CANCELED'].includes(interview.status));
   const appliedAt = formatDateTime(application?.appliedAt);
   const taskDeadline = formatDateTime(application?.taskDeadline);
   const jobContext = application
@@ -338,7 +340,12 @@ export default function CandidateApplicationDetails() {
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>No interview scheduled yet.</Typography>
                   ) : (
                     <Stack spacing={2} sx={{ mt: 2 }}>
-                      {interviews.map((interview) => {
+                      {[
+                        { label: 'Upcoming interviews', items: upcomingInterviews },
+                        { label: 'Interview history', items: interviewHistory },
+                      ].map((group) => group.items.length > 0 && <Box key={group.label}>
+                        <Typography variant="subtitle2" sx={{ mb: 1 }}>{group.label}</Typography>
+                        <Stack spacing={1.5}>{group.items.map((interview) => {
                         const schedule = formatInterviewSchedule(interview.scheduledAt);
                         return (
                           <Box key={interview.id} sx={{ p: 2, border: 1, borderColor: 'divider', borderRadius: 1.5 }}>
@@ -356,7 +363,8 @@ export default function CandidateApplicationDetails() {
                             )}
                           </Box>
                         );
-                      })}
+                        })}</Stack>
+                      </Box>)}
                     </Stack>
                   )}
                 </CardContent>

@@ -3,6 +3,7 @@ package com.shigoto.backend.controller;
 import com.shigoto.backend.config.SecurityConfig;
 import com.shigoto.backend.dto.ApplicationResponseDTO;
 import com.shigoto.backend.dto.HrApplicationDetailsDTO;
+import com.shigoto.backend.dto.HrInterviewerOptionDTO;
 import com.shigoto.backend.entity.ApplicationStatus;
 import com.shigoto.backend.entity.Role;
 import com.shigoto.backend.entity.User;
@@ -48,7 +49,8 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
         JobController.class,
         HrJobController.class,
         HrApplicationController.class,
-        InterviewController.class
+        HrInterviewController.class,
+        InterviewerTaskController.class
 })
 @Import({
         SecurityConfig.class,
@@ -177,12 +179,55 @@ class StaffEndpointSecurityTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isForbidden());
-        mockMvc.perform(post("/api/interviews")
+        mockMvc.perform(get("/api/hr/interviewers")
+                        .with(user("candidate").roles("CANDIDATE")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/hr/applications/1/interviews")
                         .with(user("candidate").roles("CANDIDATE"))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/hr/interviews/9")
+                        .with(user("candidate").roles("CANDIDATE")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/hr/interviews/9/cancel")
+                        .with(user("candidate").roles("CANDIDATE")).with(csrf()))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/interviewer/tasks")
+                        .with(user("candidate").roles("CANDIDATE")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/interviewer/applications/1/task-review")
+                        .with(user("candidate").roles("CANDIDATE")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"decision\":\"APPROVE\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void hrCannotUseInterviewerTaskReviewEndpoints() throws Exception {
+        mockMvc.perform(get("/api/interviewer/tasks").with(user("hr").roles("HR")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/interviewer/applications/1/task-review")
+                        .with(user("hr").roles("HR")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"decision\":\"APPROVE\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void hrCanListOnlyServiceScopedInterviewerOptions() throws Exception {
+        var company = com.shigoto.backend.entity.Company.builder().id(1L).name("Wix").build();
+        User hr = User.builder().id(1L).role(Role.HR).company(company).build();
+        when(authService.getAuthenticatedHr(any())).thenReturn(hr);
+        when(interviewService.getCompanyInterviewers(hr)).thenReturn(List.of(
+                new HrInterviewerOptionDTO(4L, "Dana Levi", "dana@wix.com")));
+
+        mockMvc.perform(get("/api/hr/interviewers").with(user("hr").roles("HR")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].interviewerId").value(4))
+                .andExpect(jsonPath("$[0].fullName").value("Dana Levi"))
+                .andExpect(jsonPath("$[0].password").doesNotExist())
+                .andExpect(jsonPath("$[0].company").doesNotExist());
     }
 
     @Test

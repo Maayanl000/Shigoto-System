@@ -61,7 +61,13 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/hr/jobs").hasRole("HR")
                         .requestMatchers(HttpMethod.PUT, "/api/hr/jobs/**").hasRole("HR")
                         .requestMatchers(HttpMethod.OPTIONS, "/api/hr/applications/**").permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/api/hr/interviewers").permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/api/hr/interviews/**").permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/api/interviewer/**").permitAll()
                         .requestMatchers("/api/hr/applications/**").hasRole("HR")
+                        .requestMatchers("/api/hr/interviewers").hasRole("HR")
+                        .requestMatchers("/api/hr/interviews/**").hasRole("HR")
+                        .requestMatchers("/api/interviewer/**").hasRole("INTERVIEWER")
                         .requestMatchers(HttpMethod.GET, "/api/jobs", "/api/jobs/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/jobs").hasRole("HR")
                         .requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
@@ -73,7 +79,6 @@ public class SecurityConfig {
                                 "/api/users").hasRole("HR")
                         .requestMatchers(HttpMethod.PUT, "/api/applications/{applicationId}").hasRole("HR")
                         .requestMatchers(HttpMethod.DELETE, "/api/applications/{applicationId}").hasRole("HR")
-                        .requestMatchers(HttpMethod.POST, "/api/interviews").hasRole("HR")
                         .requestMatchers(HttpMethod.POST, "/api/applications").authenticated()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/applications/mine",

@@ -2,6 +2,7 @@ package com.shigoto.backend.repository;
 
 import com.shigoto.backend.entity.Application;
 import com.shigoto.backend.entity.Company;
+import com.shigoto.backend.entity.ApplicationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -20,6 +21,9 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
     List<Application> findByJobCompany(Company company);
 
     Optional<Application> findByIdAndJobCompany(Long id, Company company);
+
+    List<Application> findByStatusAndJobCompanyOrderByAppliedAtAsc(
+            ApplicationStatus status, Company company);
 
     boolean existsByCandidateIdAndJobId(Long candidateId, Long jobId);
 }

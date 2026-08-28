@@ -7,6 +7,8 @@ import com.shigoto.backend.entity.Job;
 import com.shigoto.backend.entity.JobStatus;
 import com.shigoto.backend.entity.Role;
 import com.shigoto.backend.entity.User;
+import com.shigoto.backend.entity.TaskReviewDecision;
+import com.shigoto.backend.dto.InterviewerSubmittedTaskDTO;
 import com.shigoto.backend.dto.HrApplicationDetailsDTO;
 import com.shigoto.backend.exception.DuplicateApplicationException;
 import com.shigoto.backend.exception.ResourceNotFoundException;
@@ -359,6 +361,86 @@ class ApplicationServiceTest {
         assertThrows(IllegalArgumentException.class, () ->
                 applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.OFFER, hr));
         verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void hrCannotApproveSubmittedTask() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        application.setStatus(ApplicationStatus.TASK_SUBMITTED);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+
+        assertThrows(IllegalArgumentException.class, () -> applicationService.transitionHrApplicationStatus(
+                1L, ApplicationStatus.TASK_APPROVED, hr));
+        verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void interviewerListsOnlyCompanyScopedSubmittedTasksWithSafeFields() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User interviewer = User.builder().id(30L).role(Role.INTERVIEWER).company(company).build();
+        Application application = detailedApplication(company);
+        application.setStatus(ApplicationStatus.TASK_SUBMITTED);
+        application.setTaskInstructions("Build an API");
+        application.setTaskRepoUrl("https://github.com/candidate/task");
+        when(applicationRepository.findByStatusAndJobCompanyOrderByAppliedAtAsc(
+                ApplicationStatus.TASK_SUBMITTED, company)).thenReturn(List.of(application));
+
+        var tasks = applicationService.getSubmittedTasksForInterviewer(interviewer);
+
+        assertEquals(1, tasks.size());
+        assertEquals("https://github.com/candidate/task", tasks.getFirst().taskRepoUrl());
+        assertEquals("Dana Cohen", tasks.getFirst().candidateName());
+        assertEquals(false, Arrays.stream(InterviewerSubmittedTaskDTO.class.getRecordComponents())
+                .anyMatch(component -> List.of("hrNotes", "cvUrl", "password", "company")
+                        .contains(component.getName())));
+    }
+
+    @Test
+    void interviewerApprovesAndRejectsSubmittedTask() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User interviewer = User.builder().id(30L).role(Role.INTERVIEWER).company(company).build();
+        Application approved = detailedApplication(company);
+        approved.setStatus(ApplicationStatus.TASK_SUBMITTED);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(approved));
+        when(applicationRepository.save(approved)).thenReturn(approved);
+
+        var approval = applicationService.reviewSubmittedTask(1L, TaskReviewDecision.APPROVE, interviewer);
+        assertEquals(ApplicationStatus.TASK_APPROVED, approval.status());
+
+        Application rejected = detailedApplication(company);
+        rejected.setId(2L);
+        rejected.setStatus(ApplicationStatus.TASK_SUBMITTED);
+        when(applicationRepository.findByIdAndJobCompany(2L, company)).thenReturn(Optional.of(rejected));
+        when(applicationRepository.save(rejected)).thenReturn(rejected);
+        var rejection = applicationService.reviewSubmittedTask(2L, TaskReviewDecision.REJECT, interviewer);
+        assertEquals(ApplicationStatus.REJECTED, rejection.status());
+    }
+
+    @Test
+    void interviewerCannotReviewInvalidStateTwiceOrAcrossCompany() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User interviewer = User.builder().id(30L).role(Role.INTERVIEWER).company(company).build();
+        Application reviewed = detailedApplication(company);
+        reviewed.setStatus(ApplicationStatus.TASK_APPROVED);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(reviewed));
+        assertThrows(IllegalArgumentException.class, () -> applicationService.reviewSubmittedTask(
+                1L, TaskReviewDecision.REJECT, interviewer));
+
+        when(applicationRepository.findByIdAndJobCompany(99L, company)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> applicationService.reviewSubmittedTask(
+                99L, TaskReviewDecision.APPROVE, interviewer));
+    }
+
+    @Test
+    void interviewerWithoutCompanyIsRejected() {
+        User interviewer = User.builder().id(30L).role(Role.INTERVIEWER).build();
+        assertThrows(AccessDeniedException.class, () ->
+                applicationService.getSubmittedTasksForInterviewer(interviewer));
+        assertThrows(AccessDeniedException.class, () -> applicationService.reviewSubmittedTask(
+                1L, TaskReviewDecision.APPROVE, interviewer));
+        verify(applicationRepository, never()).findByIdAndJobCompany(any(), any());
     }
 
     @Test
