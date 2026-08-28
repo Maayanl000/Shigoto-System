@@ -130,6 +130,30 @@ public class ApplicationService {
     }
 
     @Transactional
+    public HrApplicationDetailsDTO rejectHrApplication(
+            Long applicationId, String candidateFeedback, User hr) {
+        Application application = findHrCompanyApplication(applicationId, hr);
+        if (!isAllowedHrTransition(application.getStatus(), ApplicationStatus.REJECTED)) {
+            throw new IllegalArgumentException(
+                    "Application cannot move from " + application.getStatus() + " to REJECTED");
+        }
+        application.setCandidateFeedback(normalizeCandidateFeedback(candidateFeedback));
+        application.setStatus(ApplicationStatus.REJECTED);
+        return HrApplicationDetailsDTO.from(applicationRepository.save(application));
+    }
+
+    @Transactional
+    public HrApplicationDetailsDTO updateCandidateFeedback(
+            Long applicationId, String candidateFeedback, User hr) {
+        Application application = findHrCompanyApplication(applicationId, hr);
+        if (application.getStatus() != ApplicationStatus.REJECTED) {
+            throw new IllegalArgumentException("Candidate feedback can be edited only for a rejected application");
+        }
+        application.setCandidateFeedback(normalizeCandidateFeedback(candidateFeedback));
+        return HrApplicationDetailsDTO.from(applicationRepository.save(application));
+    }
+
+    @Transactional
     public HrApplicationDetailsDTO assignHomeTask(
             Long applicationId, String taskInstructions, LocalDateTime deadline, User hr) {
         Application application = findHrCompanyApplication(applicationId, hr);
@@ -187,6 +211,24 @@ public class ApplicationService {
         }
         application.setStatus(decision == TaskReviewDecision.APPROVE
                 ? ApplicationStatus.TASK_APPROVED : ApplicationStatus.REJECTED);
+        return InterviewerSubmittedTaskDTO.from(applicationRepository.save(application));
+    }
+
+    @Transactional
+    public InterviewerSubmittedTaskDTO updateTaskReviewNotes(
+            Long applicationId, String notes, User interviewer) {
+        requireInterviewerWithCompany(interviewer);
+        Application application = applicationRepository.findByIdAndJobCompany(
+                        applicationId, interviewer.getCompany())
+                .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
+        if (application.getStatus() != ApplicationStatus.TASK_SUBMITTED) {
+            throw new IllegalArgumentException("Private task notes are available only while a task awaits review");
+        }
+        String normalized = notes == null ? "" : notes.trim();
+        if (normalized.length() > 10000) {
+            throw new IllegalArgumentException("Private task notes must be at most 10000 characters");
+        }
+        application.setTaskReviewNotes(normalized.isEmpty() ? null : normalized);
         return InterviewerSubmittedTaskDTO.from(applicationRepository.save(application));
     }
 
@@ -338,7 +380,17 @@ public class ApplicationService {
                 application.getAppliedAt(),
                 application.getTaskDeadline(),
                 application.getTaskInstructions(),
-                application.getTaskRepoUrl()
+                application.getTaskRepoUrl(),
+                application.getStatus() == ApplicationStatus.REJECTED
+                        ? application.getCandidateFeedback() : null
         );
+    }
+
+    private String normalizeCandidateFeedback(String feedback) {
+        String normalized = feedback == null || feedback.isBlank() ? null : feedback.trim();
+        if (normalized != null && normalized.length() > 10000) {
+            throw new IllegalArgumentException("Candidate feedback must not exceed 10000 characters");
+        }
+        return normalized;
     }
 }

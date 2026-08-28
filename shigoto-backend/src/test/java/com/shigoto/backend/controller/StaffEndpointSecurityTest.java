@@ -55,6 +55,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
         HrApplicationController.class,
         HrInterviewController.class,
         InterviewerTaskController.class,
+        InterviewerInterviewController.class,
         CandidateInterviewController.class
 })
 @Import({
@@ -91,6 +92,17 @@ class StaffEndpointSecurityTest {
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/applications/mine"))
                 .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/interviewer/interviews"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(put("/api/interviewer/interviews/9/feedback")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"feedback\":\"private\"}"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(put("/api/interviewer/applications/1/task-review-notes")
+                        .with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"taskReviewNotes\":\"private\"}"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -120,7 +132,7 @@ class StaffEndpointSecurityTest {
         User hr = User.builder().id(1L).email("hr@example.com").role(Role.HR)
                 .company(com.shigoto.backend.entity.Company.builder().id(1L).name("Shigoto").build()).build();
         HrApplicationDetailsDTO response = new HrApplicationDetailsDTO(
-                7L, ApplicationStatus.APPLIED, null, "Cover", "Notes", null, null, null,
+                7L, ApplicationStatus.APPLIED, null, "Cover", "Notes", null, null, null, null,
                 2L, "Dana", "Cohen", "dana@example.com", "https://github.com/dana",
                 "Developer", "Backend Engineer", null, false, 3L, "Backend Engineer", "Remote", "Shigoto");
         when(authService.getAuthenticatedHr(any())).thenReturn(hr);
@@ -203,9 +215,20 @@ class StaffEndpointSecurityTest {
         mockMvc.perform(get("/api/interviewer/tasks")
                         .with(user("candidate").roles("CANDIDATE")))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/interviewer/interviews")
+                        .with(user("candidate").roles("CANDIDATE")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/interviewer/interviews/9/feedback")
+                        .with(user("candidate").roles("CANDIDATE")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"feedback\":\"private\"}"))
+                .andExpect(status().isForbidden());
         mockMvc.perform(put("/api/interviewer/applications/1/task-review")
                         .with(user("candidate").roles("CANDIDATE")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"decision\":\"APPROVE\"}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/interviewer/applications/1/task-review-notes")
+                        .with(user("candidate").roles("CANDIDATE")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"taskReviewNotes\":\"private\"}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -216,6 +239,16 @@ class StaffEndpointSecurityTest {
         mockMvc.perform(put("/api/interviewer/applications/1/task-review")
                         .with(user("hr").roles("HR")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"decision\":\"APPROVE\"}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/interviewer/applications/1/task-review-notes")
+                        .with(user("hr").roles("HR")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"taskReviewNotes\":\"private\"}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/interviewer/interviews").with(user("hr").roles("HR")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/interviewer/interviews/9/feedback")
+                        .with(user("hr").roles("HR")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"feedback\":\"private\"}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -294,7 +327,7 @@ class StaffEndpointSecurityTest {
         User hr = User.builder().id(1L).role(Role.HR)
                 .company(com.shigoto.backend.entity.Company.builder().id(1L).name("Wix").build()).build();
         HrApplicationDetailsDTO response = new HrApplicationDetailsDTO(
-                1L, ApplicationStatus.REJECTED, null, "Cover", "Notes", null, null, null,
+                1L, ApplicationStatus.REJECTED, null, "Cover", "Notes", null, null, null, null,
                 2L, "Dana", "Cohen", "dana@example.com", null, null, null, null, false,
                 3L, "Developer", "Remote", "Wix");
         when(authService.getAuthenticatedHr(any())).thenReturn(hr);
@@ -369,7 +402,7 @@ class StaffEndpointSecurityTest {
         User candidate = User.builder().id(2L).email("candidate@example.com").role(Role.CANDIDATE).build();
         ApplicationResponseDTO response = new ApplicationResponseDTO(
                 1L, 2L, 3L, "Developer", "Shigoto", "Remote", "Cover",
-                ApplicationStatus.TASK_SUBMITTED, null, null, "Build a REST API", "https://github.com/user/repo");
+                ApplicationStatus.TASK_SUBMITTED, null, null, "Build a REST API", "https://github.com/user/repo", null);
         when(authService.getAuthenticatedCandidate(any())).thenReturn(candidate);
         when(applicationService.submitTask(1L, "https://github.com/user/repo", candidate)).thenReturn(response);
 

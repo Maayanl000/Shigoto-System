@@ -274,6 +274,13 @@ export default function CandidateApplicationDetails() {
                 </CardContent>
               </Card>
 
+              {application.status === 'REJECTED' && application.candidateFeedback?.trim() && <Card sx={{ borderColor: 'secondary.main' }}>
+                <CardContent>
+                  <Typography variant="h6">Feedback</Typography>
+                  <Typography variant="body2" sx={{ mt: 2, lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{application.candidateFeedback}</Typography>
+                </CardContent>
+              </Card>}
+
               <Card sx={{ borderColor: hasTask ? 'secondary.main' : 'divider' }}>
                 <CardContent>
                   <Stack direction="row" justifyContent="space-between" alignItems="center"><Stack direction="row" spacing={1} alignItems="center"><AssignmentOutlinedIcon color="secondary" /><Typography variant="h6">Technical home task</Typography></Stack><Chip label={hasTask ? 'Task stage' : 'Not assigned'} size="small" variant="outlined" /></Stack>

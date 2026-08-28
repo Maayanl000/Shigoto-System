@@ -16,7 +16,8 @@ public record HrScheduledInterviewResponseDTO(
         String meetingLink,
         InterviewType type,
         InterviewStatus status,
-        ApplicationStatus applicationStatus
+        ApplicationStatus applicationStatus,
+        String feedback
 ) {
     public static HrScheduledInterviewResponseDTO from(Interview interview) {
         var interviewer = interview.getInterviewer();
@@ -24,6 +25,6 @@ public record HrScheduledInterviewResponseDTO(
                 interview.getId(), interview.getApplication().getId(), interviewer.getId(),
                 (interviewer.getFirstName() + " " + interviewer.getLastName()).trim(),
                 interview.getScheduledAt(), interview.getMeetingLink(), interview.getType(),
-                interview.getStatus(), interview.getApplication().getStatus());
+                interview.getStatus(), interview.getApplication().getStatus(), interview.getFeedback());
     }
 }

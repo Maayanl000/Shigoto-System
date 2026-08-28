@@ -14,6 +14,7 @@ public record InterviewerSubmittedTaskDTO(
         String taskInstructions,
         LocalDateTime taskDeadline,
         String taskRepoUrl,
+        String taskReviewNotes,
         ApplicationStatus status
 ) {
     public static InterviewerSubmittedTaskDTO from(Application application) {
@@ -23,6 +24,7 @@ public record InterviewerSubmittedTaskDTO(
                 application.getId(), candidate.getId(),
                 (candidate.getFirstName() + " " + candidate.getLastName()).trim(),
                 job.getId(), job.getTitle(), application.getTaskInstructions(),
-                application.getTaskDeadline(), application.getTaskRepoUrl(), application.getStatus());
+                application.getTaskDeadline(), application.getTaskRepoUrl(),
+                application.getTaskReviewNotes(), application.getStatus());
     }
 }

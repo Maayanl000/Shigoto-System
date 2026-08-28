@@ -15,5 +15,6 @@ public record ApplicationResponseDTO(
         LocalDateTime appliedAt,
         LocalDateTime taskDeadline,
         String taskInstructions,
-        String taskRepoUrl
+        String taskRepoUrl,
+        String candidateFeedback
 ) {}

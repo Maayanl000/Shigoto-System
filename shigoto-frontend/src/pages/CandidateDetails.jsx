@@ -62,6 +62,10 @@ export default function CandidateDetails() {
   const [interviewMessage, setInterviewMessage] = useState('');
   const [editingInterviewId, setEditingInterviewId] = useState(null);
   const [editingInterviewType, setEditingInterviewType] = useState('');
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [candidateFeedbackDraft, setCandidateFeedbackDraft] = useState('');
+  const [candidateFeedbackBusy, setCandidateFeedbackBusy] = useState(false);
+  const [candidateFeedbackMessage, setCandidateFeedbackMessage] = useState('');
 
   const statusActions = record ? {
     APPLIED: [{ label: 'Move to HR interview', status: 'HR_INTERVIEW' }, { label: 'Reject', status: 'REJECTED' }],
@@ -89,6 +93,7 @@ export default function CandidateDetails() {
       const response = await api.get(`/hr/applications/${applicationId}`);
       setRecord(response.data);
       setNotes(response.data.hrNotes || '');
+      setCandidateFeedbackDraft(response.data.candidateFeedback || '');
     } catch (requestError) {
       setError(requestError.response?.status === 404
         ? 'This application was not found or is not available to your company.'
@@ -105,6 +110,7 @@ export default function CandidateDetails() {
         if (active) {
           setRecord(response.data);
           setNotes(response.data.hrNotes || '');
+          setCandidateFeedbackDraft(response.data.candidateFeedback || '');
         }
       })
       .catch((requestError) => {
@@ -194,6 +200,41 @@ export default function CandidateDetails() {
       setStatusMessage(requestError.response?.data?.message || 'Could not update the application status.');
     } finally {
       setStatusBusy(false);
+    }
+  };
+
+  const rejectCandidate = async () => {
+    setCandidateFeedbackBusy(true);
+    setStatusMessage('');
+    try {
+      const response = await api.put(`/hr/applications/${applicationId}/reject`, {
+        candidateFeedback: candidateFeedbackDraft.trim() || null,
+      });
+      setRecord(response.data);
+      setCandidateFeedbackDraft(response.data.candidateFeedback || '');
+      setRejectOpen(false);
+      setStatusMessage('Candidate rejected.');
+    } catch (requestError) {
+      setStatusMessage(requestError.response?.data?.message || 'Could not reject the candidate.');
+    } finally {
+      setCandidateFeedbackBusy(false);
+    }
+  };
+
+  const saveCandidateFeedback = async () => {
+    setCandidateFeedbackBusy(true);
+    setCandidateFeedbackMessage('');
+    try {
+      const response = await api.put(`/hr/applications/${applicationId}/candidate-feedback`, {
+        candidateFeedback: candidateFeedbackDraft.trim() || null,
+      });
+      setRecord(response.data);
+      setCandidateFeedbackDraft(response.data.candidateFeedback || '');
+      setCandidateFeedbackMessage('Candidate feedback saved.');
+    } catch (requestError) {
+      setCandidateFeedbackMessage(requestError.response?.data?.message || 'Could not save candidate feedback.');
+    } finally {
+      setCandidateFeedbackBusy(false);
     }
   };
 
@@ -398,6 +439,10 @@ export default function CandidateDetails() {
                         <Typography variant="body2">{interview.interviewerName}</Typography>
                         <Typography variant="body2" color="text.secondary">{formatDate(interview.scheduledAt)} · {interview.status}</Typography>
                         {interview.meetingLink && <Link href={interview.meetingLink} target="_blank" rel="noopener noreferrer">Meeting link</Link>}
+                        {interview.status === 'COMPLETED' && interview.feedback && <Box sx={{ mt: 1.25, p: 1.25, bgcolor: 'action.hover', borderRadius: 1 }}>
+                          <Typography variant="caption" color="text.secondary">Interviewer feedback</Typography>
+                          <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-wrap' }}>{interview.feedback}</Typography>
+                        </Box>}
                         {interview.status === 'SCHEDULED' && <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
                           <Button size="small" onClick={() => beginReschedule(interview)}>Reschedule</Button>
                           <Button size="small" color="error" onClick={() => cancelInterview(interview.interviewId)}>Cancel</Button>
@@ -447,14 +492,31 @@ export default function CandidateDetails() {
                       variant={action.status === 'REJECTED' ? 'outlined' : 'contained'}
                       color={action.status === 'REJECTED' ? 'error' : 'primary'}
                       disabled={statusBusy}
-                      onClick={() => updateStatus(action.status)}
+                      onClick={() => {
+                        if (action.status === 'REJECTED') {
+                          setCandidateFeedbackDraft(record.candidateFeedback || '');
+                          setRejectOpen(true);
+                        } else updateStatus(action.status);
+                      }}
                     >{action.label}</Button>
                   ))}
                 </Stack>
               ) : <Typography variant="body2" color="text.secondary">No HR status actions are available at this stage.</Typography>}
-              {statusMessage && <Alert severity={statusMessage.startsWith('Status updated') || statusMessage === 'Home task sent.' ? 'success' : 'error'} sx={{ mt: 2 }}>{statusMessage}</Alert>}
+              {statusMessage && <Alert severity={statusMessage.startsWith('Status updated') || statusMessage === 'Home task sent.' || statusMessage === 'Candidate rejected.' ? 'success' : 'error'} sx={{ mt: 2 }}>{statusMessage}</Alert>}
             </CardContent></Card>
           </Grid>
+
+          {record.status === 'REJECTED' && <Grid size={{ xs: 12 }}>
+            <Card><CardContent>
+              <Typography variant="h6" gutterBottom>Feedback to candidate</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>This message is visible to the candidate. Do not include internal notes or interviewer feedback.</Typography>
+              <TextField multiline minRows={4} fullWidth value={candidateFeedbackDraft} onChange={(event) => { setCandidateFeedbackDraft(event.target.value); setCandidateFeedbackMessage(''); }} inputProps={{ maxLength: 10000 }} helperText={`${candidateFeedbackDraft.length}/10000`} placeholder="Optional candidate-facing feedback" />
+              <Stack direction="row" alignItems="center" spacing={2} sx={{ mt: 2 }}>
+                <Button variant="contained" onClick={saveCandidateFeedback} disabled={candidateFeedbackBusy}>{candidateFeedbackBusy ? 'Saving…' : 'Save feedback'}</Button>
+                {candidateFeedbackMessage && <Typography variant="body2" color={candidateFeedbackMessage === 'Candidate feedback saved.' ? 'success.main' : 'error.main'}>{candidateFeedbackMessage}</Typography>}
+              </Stack>
+            </CardContent></Card>
+          </Grid>}
 
           <Grid size={{ xs: 12 }}>
             <Card><CardContent>
@@ -484,6 +546,14 @@ export default function CandidateDetails() {
               <Button onClick={closeReschedule} disabled={interviewBusy}>Cancel</Button>
               <Button variant="contained" onClick={scheduleInterview} disabled={interviewBusy}>{interviewBusy ? 'Saving…' : 'Save changes'}</Button>
             </DialogActions>
+          </Dialog>
+          <Dialog open={rejectOpen} onClose={() => !candidateFeedbackBusy && setRejectOpen(false)} fullWidth maxWidth="sm">
+            <DialogTitle>Reject candidate?</DialogTitle>
+            <DialogContent>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>This action ends the candidate&apos;s application. You may optionally provide feedback they can read.</Typography>
+              <TextField label="Feedback to candidate" multiline minRows={5} fullWidth value={candidateFeedbackDraft} onChange={(event) => setCandidateFeedbackDraft(event.target.value)} inputProps={{ maxLength: 10000 }} helperText={`${candidateFeedbackDraft.length}/10000 · Optional`} />
+            </DialogContent>
+            <DialogActions><Button onClick={() => setRejectOpen(false)} disabled={candidateFeedbackBusy}>Cancel</Button><Button color="error" variant="contained" onClick={rejectCandidate} disabled={candidateFeedbackBusy}>{candidateFeedbackBusy ? 'Rejecting…' : 'Reject candidate'}</Button></DialogActions>
           </Dialog>
         </Grid>
       )}

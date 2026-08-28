@@ -52,6 +52,12 @@ public class Application {
 
     private String taskRepoUrl; // קישור לגיטהאב של הפתרון
 
+    @Column(columnDefinition = "TEXT")
+    private String taskReviewNotes;
+
+    @Column(columnDefinition = "TEXT")
+    private String candidateFeedback;
+
     @Column(updatable = false)
     private LocalDateTime appliedAt;
 

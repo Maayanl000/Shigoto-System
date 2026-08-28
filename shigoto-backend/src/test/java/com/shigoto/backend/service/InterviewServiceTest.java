@@ -2,6 +2,7 @@ package com.shigoto.backend.service;
 
 import com.shigoto.backend.dto.HrInterviewScheduleRequestDTO;
 import com.shigoto.backend.dto.HrInterviewRescheduleRequestDTO;
+import com.shigoto.backend.dto.CandidateInterviewResponseDTO;
 import com.shigoto.backend.entity.Application;
 import com.shigoto.backend.entity.ApplicationStatus;
 import com.shigoto.backend.entity.Company;
@@ -313,6 +314,133 @@ class InterviewServiceTest {
     }
 
     @Test
+    void interviewerListsOnlyRepositoryScopedOwnInterviews() {
+        Company company = company(1L, "Wix");
+        User owner = interviewer(5L, company);
+        Interview ownInterview = interviewerInterview(9L, owner, InterviewStatus.SCHEDULED);
+        when(interviewRepository.findByInterviewerIdOrderByScheduledAtAsc(5L))
+                .thenReturn(List.of(ownInterview));
+
+        var response = interviewService.getInterviewerInterviews(owner);
+
+        assertEquals(1, response.size());
+        assertEquals(9L, response.getFirst().interviewId());
+        assertEquals("Candidate Name", response.getFirst().candidateName());
+        verify(interviewRepository).findByInterviewerIdOrderByScheduledAtAsc(5L);
+    }
+
+    @Test
+    void ownedScheduledInterviewFeedbackPersistsAndCompletesOnlyInterview() {
+        Company company = company(1L, "Wix");
+        User owner = interviewer(5L, company);
+        Interview interview = interviewerInterview(9L, owner, InterviewStatus.SCHEDULED);
+        when(interviewRepository.findByIdAndInterviewerId(9L, 5L)).thenReturn(Optional.of(interview));
+        when(interviewRepository.save(interview)).thenReturn(interview);
+
+        var response = interviewService.submitInterviewerFeedback(9L, "  Strong technical discussion.  ", owner);
+
+        assertEquals("Strong technical discussion.", interview.getFeedback());
+        assertEquals(InterviewStatus.COMPLETED, interview.getStatus());
+        assertEquals(ApplicationStatus.TECH_INTERVIEW_SCHEDULED, interview.getApplication().getStatus());
+        assertEquals(InterviewStatus.COMPLETED, response.status());
+        verify(interviewRepository).save(interview);
+        verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void ownerUpdatesTrimmedPrivateNotesWithoutChangingStatuses() {
+        Company company = company(1L, "Wix");
+        User owner = interviewer(5L, company);
+        Interview interview = interviewerInterview(9L, owner, InterviewStatus.SCHEDULED);
+        when(interviewRepository.findByIdAndInterviewerId(9L, 5L)).thenReturn(Optional.of(interview));
+        when(interviewRepository.save(interview)).thenReturn(interview);
+
+        var response = interviewService.updateInterviewerNotes(9L, "  Ask about testing strategy.  ", owner);
+
+        assertEquals("Ask about testing strategy.", response.interviewerNotes());
+        assertEquals(InterviewStatus.SCHEDULED, interview.getStatus());
+        assertEquals(ApplicationStatus.TECH_INTERVIEW_SCHEDULED, interview.getApplication().getStatus());
+        verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void otherInterviewerCannotReadOrUpdatePrivateNotes() {
+        User other = interviewer(6L, company(1L, "Wix"));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> interviewService.updateInterviewerNotes(9L, "notes", other));
+        verify(interviewRepository).findByIdAndInterviewerId(9L, 6L);
+        verify(interviewRepository, never()).save(any());
+    }
+
+    @Test
+    void privateNotesValidationAndCandidatePrivacyAreEnforced() {
+        User owner = interviewer(5L, company(1L, "Wix"));
+        when(interviewRepository.findByIdAndInterviewerId(9L, 5L))
+                .thenReturn(Optional.of(interviewerInterview(9L, owner, InterviewStatus.SCHEDULED)));
+        assertThrows(IllegalArgumentException.class,
+                () -> interviewService.updateInterviewerNotes(9L, "x".repeat(10001), owner));
+        assertFalse(List.of(CandidateInterviewResponseDTO.class.getRecordComponents()).stream()
+                .anyMatch(component -> component.getName().equals("interviewerNotes")));
+    }
+
+    @Test
+    void candidateReviewRequiresAssignedInterviewOrSubmittedCompanyTask() {
+        Company company = company(1L, "Wix");
+        User owner = interviewer(5L, company);
+        Application application = application(company, ApplicationStatus.HR_INTERVIEW);
+        application.setCandidate(User.builder().id(3L).firstName("Candidate").lastName("Name")
+                .email("candidate@example.com").role(Role.CANDIDATE).build());
+        when(applicationRepository.findByIdAndJobCompany(7L, company)).thenReturn(Optional.of(application));
+        when(interviewRepository.existsByApplicationIdAndInterviewerId(7L, 5L)).thenReturn(true);
+
+        assertEquals(7L, interviewService.getInterviewerCandidateReview(7L, owner).applicationId());
+
+        when(interviewRepository.existsByApplicationIdAndInterviewerId(7L, 5L)).thenReturn(false);
+        assertThrows(ResourceNotFoundException.class,
+                () -> interviewService.getInterviewerCandidateReview(7L, owner));
+    }
+
+    @Test
+    void otherInterviewersCannotSubmitFeedbackRegardlessOfCompany() {
+        User sameCompany = interviewer(6L, company(1L, "Wix"));
+        User otherCompany = interviewer(7L, company(2L, "Google"));
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> interviewService.submitInterviewerFeedback(9L, "Feedback", sameCompany));
+        assertThrows(ResourceNotFoundException.class,
+                () -> interviewService.submitInterviewerFeedback(9L, "Feedback", otherCompany));
+        verify(interviewRepository).findByIdAndInterviewerId(9L, 6L);
+        verify(interviewRepository).findByIdAndInterviewerId(9L, 7L);
+        verify(interviewRepository, never()).save(any());
+    }
+
+    @Test
+    void completedAndCanceledInterviewsRejectFeedback() {
+        Company company = company(1L, "Wix");
+        User owner = interviewer(5L, company);
+        for (InterviewStatus status : List.of(InterviewStatus.COMPLETED, InterviewStatus.CANCELED)) {
+            Interview interview = interviewerInterview(9L, owner, status);
+            when(interviewRepository.findByIdAndInterviewerId(9L, 5L)).thenReturn(Optional.of(interview));
+            assertThrows(IllegalArgumentException.class,
+                    () -> interviewService.submitInterviewerFeedback(9L, "Feedback", owner));
+        }
+        verify(interviewRepository, never()).save(any());
+    }
+
+    @Test
+    void feedbackValidationAndInterviewerRoleAreEnforced() {
+        User owner = interviewer(5L, company(1L, "Wix"));
+        assertThrows(IllegalArgumentException.class,
+                () -> interviewService.submitInterviewerFeedback(9L, "   ", owner));
+        assertThrows(IllegalArgumentException.class,
+                () -> interviewService.submitInterviewerFeedback(9L, "x".repeat(10001), owner));
+        assertThrows(AccessDeniedException.class,
+                () -> interviewService.getInterviewerInterviews(hr(company(1L, "Wix"))));
+        verify(interviewRepository, never()).save(any());
+    }
+
+    @Test
     void hrReadsScheduledInterviewsWithInterviewerIdForRescheduling() {
         Company company = company(1L, "Wix");
         Application application = application(company, ApplicationStatus.TECH_INTERVIEW_SCHEDULED);
@@ -326,6 +454,22 @@ class InterviewServiceTest {
 
         assertEquals(9L, response.getFirst().interviewId());
         assertEquals(5L, response.getFirst().interviewerId());
+    }
+
+    @Test
+    void ownCompanyHrReadsCompletedFeedbackWhileOtherCompanyIsBlocked() {
+        Company wix = company(1L, "Wix");
+        Company google = company(2L, "Google");
+        Application application = application(wix, ApplicationStatus.TECH_INTERVIEW_SCHEDULED);
+        Interview interview = Interview.builder().id(9L).application(application).interviewer(interviewer(5L, wix))
+                .scheduledAt(LocalDateTime.now().minusDays(1)).feedback("Recommended")
+                .type(InterviewType.TECHNICAL).status(InterviewStatus.COMPLETED).build();
+        when(applicationRepository.findByIdAndJobCompany(7L, wix)).thenReturn(Optional.of(application));
+        when(interviewRepository.findByApplicationIdOrderByScheduledAtAsc(7L)).thenReturn(List.of(interview));
+
+        assertEquals("Recommended", interviewService.getHrApplicationInterviews(7L, hr(wix)).getFirst().feedback());
+        assertThrows(ResourceNotFoundException.class,
+                () -> interviewService.getHrApplicationInterviews(7L, hr(google)));
     }
 
     private void stubScopedEntities(Company company, Application application, User interviewer,
@@ -348,6 +492,16 @@ class InterviewServiceTest {
         Application application = application(company, ApplicationStatus.TECH_INTERVIEW_SCHEDULED);
         return Interview.builder().id(9L).application(application).interviewer(interviewer(5L, company))
                 .scheduledAt(LocalDateTime.now().plusDays(1)).meetingLink("https://meet.example.com/original")
+                .type(InterviewType.TECHNICAL).status(status).build();
+    }
+
+    private Interview interviewerInterview(Long id, User owner, InterviewStatus status) {
+        Application application = Application.builder().id(7L)
+                .candidate(User.builder().id(3L).firstName("Candidate").lastName("Name").role(Role.CANDIDATE).build())
+                .job(Job.builder().id(2L).title("Backend Engineer").company(owner.getCompany()).build())
+                .status(ApplicationStatus.TECH_INTERVIEW_SCHEDULED).build();
+        return Interview.builder().id(id).application(application).interviewer(owner)
+                .scheduledAt(LocalDateTime.now().plusDays(1)).meetingLink("https://meet.example.com/interview")
                 .type(InterviewType.TECHNICAL).status(status).build();
     }
 

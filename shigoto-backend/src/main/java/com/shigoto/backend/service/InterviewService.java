@@ -5,6 +5,8 @@ import com.shigoto.backend.dto.HrInterviewerOptionDTO;
 import com.shigoto.backend.dto.HrInterviewScheduleRequestDTO;
 import com.shigoto.backend.dto.HrInterviewRescheduleRequestDTO;
 import com.shigoto.backend.dto.HrScheduledInterviewResponseDTO;
+import com.shigoto.backend.dto.InterviewerInterviewResponseDTO;
+import com.shigoto.backend.dto.InterviewerCandidateReviewDTO;
 import com.shigoto.backend.entity.*;
 import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.ApplicationRepository;
@@ -176,6 +178,57 @@ public class InterviewService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<InterviewerInterviewResponseDTO> getInterviewerInterviews(User interviewer) {
+        requireInterviewer(interviewer);
+        return interviewRepository.findByInterviewerIdOrderByScheduledAtAsc(interviewer.getId())
+                .stream()
+                .map(InterviewerInterviewResponseDTO::from)
+                .toList();
+    }
+
+    @Transactional
+    public InterviewerInterviewResponseDTO submitInterviewerFeedback(
+            Long interviewId, String feedback, User interviewer) {
+        requireInterviewer(interviewer);
+        String validatedFeedback = validateFeedback(feedback);
+        Interview interview = interviewRepository.findByIdAndInterviewerId(interviewId, interviewer.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Interview not found"));
+        if (interview.getStatus() != InterviewStatus.SCHEDULED) {
+            throw new IllegalArgumentException("Only a scheduled interview can receive feedback");
+        }
+        interview.setFeedback(validatedFeedback);
+        interview.setStatus(InterviewStatus.COMPLETED);
+        return InterviewerInterviewResponseDTO.from(interviewRepository.save(interview));
+    }
+
+    @Transactional
+    public InterviewerInterviewResponseDTO updateInterviewerNotes(
+            Long interviewId, String notes, User interviewer) {
+        requireInterviewer(interviewer);
+        Interview interview = interviewRepository.findByIdAndInterviewerId(interviewId, interviewer.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Interview not found"));
+        String normalized = notes == null ? "" : notes.trim();
+        if (normalized.length() > 10000) {
+            throw new IllegalArgumentException("Private notes must be at most 10000 characters");
+        }
+        interview.setInterviewerNotes(normalized.isEmpty() ? null : normalized);
+        return InterviewerInterviewResponseDTO.from(interviewRepository.save(interview));
+    }
+
+    @Transactional(readOnly = true)
+    public InterviewerCandidateReviewDTO getInterviewerCandidateReview(Long applicationId, User interviewer) {
+        requireInterviewer(interviewer);
+        Application application = applicationRepository.findByIdAndJobCompany(applicationId, interviewer.getCompany())
+                .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
+        boolean assigned = interviewRepository.existsByApplicationIdAndInterviewerId(applicationId, interviewer.getId());
+        boolean reviewableTask = application.getStatus() == ApplicationStatus.TASK_SUBMITTED;
+        if (!assigned && !reviewableTask) {
+            throw new ResourceNotFoundException("Application not found");
+        }
+        return InterviewerCandidateReviewDTO.from(application);
+    }
+
     private CandidateInterviewResponseDTO toCandidateResponseDTO(Interview interview) {
         User interviewer = interview.getInterviewer();
         Job job = interview.getApplication().getJob();
@@ -198,6 +251,26 @@ public class InterviewService {
         if (candidate == null || candidate.getRole() != Role.CANDIDATE) {
             throw new AccessDeniedException("Candidate access is required");
         }
+    }
+
+    private void requireInterviewer(User interviewer) {
+        if (interviewer == null || interviewer.getRole() != Role.INTERVIEWER) {
+            throw new AccessDeniedException("Interviewer access is required");
+        }
+        if (interviewer.getCompany() == null) {
+            throw new AccessDeniedException("Interviewer must belong to a company");
+        }
+    }
+
+    private String validateFeedback(String feedback) {
+        if (feedback == null || feedback.isBlank()) {
+            throw new IllegalArgumentException("Feedback is required");
+        }
+        String trimmedFeedback = feedback.trim();
+        if (trimmedFeedback.length() > 10000) {
+            throw new IllegalArgumentException("Feedback must be at most 10000 characters");
+        }
+        return trimmedFeedback;
     }
 
     private void requireHrWithCompany(User hr) {

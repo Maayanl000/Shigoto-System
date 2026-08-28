@@ -5,7 +5,6 @@ import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined';
 import ViewKanbanOutlinedIcon from '@mui/icons-material/ViewKanbanOutlined';
 import WorkOutlineRoundedIcon from '@mui/icons-material/WorkOutlineRounded';
 import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
-import RateReviewOutlinedIcon from '@mui/icons-material/RateReviewOutlined';
 import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 import PublicRoundedIcon from '@mui/icons-material/PublicRounded';
 import ContactSupportOutlinedIcon from '@mui/icons-material/ContactSupportOutlined';
@@ -42,7 +41,6 @@ const areaConfig = {
     initials: 'IV',
     links: [
       { label: 'My interviews', to: '/interviewer', icon: <GroupsOutlinedIcon /> },
-      { label: 'Candidate review', to: '/interviewer/interviews/demo', icon: <RateReviewOutlinedIcon /> },
     ],
   },
 };

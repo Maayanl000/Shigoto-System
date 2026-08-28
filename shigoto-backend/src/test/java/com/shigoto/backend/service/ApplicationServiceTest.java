@@ -9,6 +9,7 @@ import com.shigoto.backend.entity.Role;
 import com.shigoto.backend.entity.User;
 import com.shigoto.backend.entity.TaskReviewDecision;
 import com.shigoto.backend.dto.InterviewerSubmittedTaskDTO;
+import com.shigoto.backend.dto.ApplicationResponseDTO;
 import com.shigoto.backend.dto.HrApplicationDetailsDTO;
 import com.shigoto.backend.exception.DuplicateApplicationException;
 import com.shigoto.backend.exception.ResourceNotFoundException;
@@ -398,6 +399,72 @@ class ApplicationServiceTest {
     }
 
     @Test
+    void ownCompanyHrRejectsWithTrimmedCandidateFeedback() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        application.setStatus(ApplicationStatus.APPLIED);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
+
+        var response = applicationService.rejectHrApplication(
+                1L, "  Thank you for your time. We need deeper API experience.  ", hr);
+
+        assertEquals(ApplicationStatus.REJECTED, response.status());
+        assertEquals("Thank you for your time. We need deeper API experience.", response.candidateFeedback());
+    }
+
+    @Test
+    void candidateFeedbackIsCompanyScopedValidatedAndEditableOnlyAfterRejection() {
+        Company wix = Company.builder().id(10L).name("Wix").build();
+        Company google = Company.builder().id(20L).name("Google").build();
+        User wixHr = User.builder().id(20L).role(Role.HR).company(wix).build();
+        User googleHr = User.builder().id(21L).role(Role.HR).company(google).build();
+        when(applicationRepository.findByIdAndJobCompany(1L, google)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () ->
+                applicationService.updateCandidateFeedback(1L, "feedback", googleHr));
+
+        Application rejected = detailedApplication(wix);
+        rejected.setStatus(ApplicationStatus.REJECTED);
+        when(applicationRepository.findByIdAndJobCompany(1L, wix)).thenReturn(Optional.of(rejected));
+        when(applicationRepository.save(rejected)).thenReturn(rejected);
+        var cleared = applicationService.updateCandidateFeedback(1L, "   ", wixHr);
+        assertEquals(null, cleared.candidateFeedback());
+        assertEquals(ApplicationStatus.REJECTED, rejected.getStatus());
+        assertThrows(IllegalArgumentException.class, () ->
+                applicationService.updateCandidateFeedback(1L, "x".repeat(10001), wixHr));
+
+        rejected.setStatus(ApplicationStatus.APPLIED);
+        assertThrows(IllegalArgumentException.class, () ->
+                applicationService.updateCandidateFeedback(1L, "feedback", wixHr));
+    }
+
+    @Test
+    void candidateSeesFeedbackOnlyOnOwnRejectedApplicationWithoutInternalFields() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User owner = User.builder().id(30L).role(Role.CANDIDATE).build();
+        User other = User.builder().id(31L).role(Role.CANDIDATE).build();
+        Application application = detailedApplication(company);
+        application.setCandidate(owner);
+        application.setStatus(ApplicationStatus.REJECTED);
+        application.setCandidateFeedback("Candidate-safe feedback");
+        application.setHrNotes("private HR notes");
+        application.setTaskReviewNotes("private task notes");
+        when(applicationRepository.findById(1L)).thenReturn(Optional.of(application));
+
+        assertEquals("Candidate-safe feedback",
+                applicationService.getOwnedApplicationById(1L, owner).candidateFeedback());
+        assertThrows(AccessDeniedException.class, () ->
+                applicationService.getOwnedApplicationById(1L, other));
+
+        application.setStatus(ApplicationStatus.APPLIED);
+        assertEquals(null, applicationService.getOwnedApplicationById(1L, owner).candidateFeedback());
+        assertEquals(false, Arrays.stream(ApplicationResponseDTO.class.getRecordComponents())
+                .anyMatch(component -> List.of("hrNotes", "feedback", "interviewerNotes", "taskReviewNotes")
+                        .contains(component.getName())));
+    }
+
+    @Test
     void interviewerApprovesAndRejectsSubmittedTask() {
         Company company = Company.builder().id(10L).name("Wix").build();
         User interviewer = User.builder().id(30L).role(Role.INTERVIEWER).company(company).build();
@@ -416,6 +483,50 @@ class ApplicationServiceTest {
         when(applicationRepository.save(rejected)).thenReturn(rejected);
         var rejection = applicationService.reviewSubmittedTask(2L, TaskReviewDecision.REJECT, interviewer);
         assertEquals(ApplicationStatus.REJECTED, rejection.status());
+    }
+
+    @Test
+    void companyInterviewerSavesTrimmedTaskReviewNotesWithoutChangingStatus() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User interviewer = User.builder().id(30L).role(Role.INTERVIEWER).company(company).build();
+        Application application = detailedApplication(company);
+        application.setStatus(ApplicationStatus.TASK_SUBMITTED);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
+
+        var response = applicationService.updateTaskReviewNotes(
+                1L, "  Check error handling and test coverage.  ", interviewer);
+
+        assertEquals("Check error handling and test coverage.", response.taskReviewNotes());
+        assertEquals(ApplicationStatus.TASK_SUBMITTED, application.getStatus());
+        verify(applicationRepository).save(application);
+    }
+
+    @Test
+    void taskReviewNotesRejectOtherCompanyInvalidRoleAndExcessLength() {
+        Company wix = Company.builder().id(10L).name("Wix").build();
+        Company google = Company.builder().id(20L).name("Google").build();
+        User googleInterviewer = User.builder().id(31L).role(Role.INTERVIEWER).company(google).build();
+        when(applicationRepository.findByIdAndJobCompany(1L, google)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                applicationService.updateTaskReviewNotes(1L, "notes", googleInterviewer));
+        assertThrows(AccessDeniedException.class, () ->
+                applicationService.updateTaskReviewNotes(1L, "notes",
+                        User.builder().role(Role.CANDIDATE).build()));
+
+        User wixInterviewer = User.builder().id(30L).role(Role.INTERVIEWER).company(wix).build();
+        Application application = detailedApplication(wix);
+        application.setStatus(ApplicationStatus.TASK_SUBMITTED);
+        when(applicationRepository.findByIdAndJobCompany(1L, wix)).thenReturn(Optional.of(application));
+        assertThrows(IllegalArgumentException.class, () ->
+                applicationService.updateTaskReviewNotes(1L, "x".repeat(10001), wixInterviewer));
+    }
+
+    @Test
+    void candidateApplicationDtoDoesNotExposeTaskReviewNotes() {
+        assertEquals(false, Arrays.stream(ApplicationResponseDTO.class.getRecordComponents())
+                .anyMatch(component -> component.getName().equals("taskReviewNotes")));
     }
 
     @Test

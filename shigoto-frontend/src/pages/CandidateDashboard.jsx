@@ -181,14 +181,12 @@ export default function CandidateDashboard() {
             <Grid key={item.id} size={{ xs: 12, sm: 4 }}>
               <Card sx={{ height: '100%', border: 2, borderColor: selected ? `${item.tone}.main` : 'transparent', bgcolor: selected ? 'action.selected' : 'background.paper', transition: 'transform 160ms ease, border-color 160ms ease', '&:hover': { transform: 'translateY(-2px)' } }}>
                 <CardActionArea onClick={() => setSelectedView(item.id)} aria-pressed={selected} sx={{ height: '100%' }}>
-                  <CardContent>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <CardContent sx={{ position: 'relative', pr: 9 }}>
                       <Box>
                         <Typography variant="body2" color="text.secondary">{item.label}</Typography>
                         <Typography variant="h3" fontWeight={800} sx={{ mt: 0.75 }}>{loading || loadError ? '—' : item.value}</Typography>
                       </Box>
-                      <Avatar sx={{ bgcolor: `${item.tone}.light`, color: `${item.tone}.dark` }}>{item.icon}</Avatar>
-                    </Stack>
+                      <Avatar sx={{ position: 'absolute', top: 16, right: 16, bgcolor: `${item.tone}.light`, color: `${item.tone}.dark` }}>{item.icon}</Avatar>
                     {selected && <Typography variant="caption" fontWeight={800} sx={{ display: 'block', mt: 1.5 }}>Selected view</Typography>}
                   </CardContent>
                 </CardActionArea>

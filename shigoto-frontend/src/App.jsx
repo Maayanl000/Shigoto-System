@@ -19,8 +19,7 @@ import HrDashboard from './pages/HrDashboard';
 import JobManagement from './pages/JobManagement';
 import CandidateDetails from './pages/CandidateDetails';
 import InterviewerDashboard from './pages/InterviewerDashboard';
-import InterviewDetails from './pages/InterviewDetails';
-import InterviewFeedback from './pages/InterviewFeedback';
+import InterviewerCandidateReview from './pages/InterviewerCandidateReview';
 
 const publicPaths = ['/', '/jobs', '/about', '/contact', '/login', '/register'];
 
@@ -58,8 +57,7 @@ function AppRoutes() {
       <Route path="/hr/jobs" element={<RequireRole role="HR"><JobManagement /></RequireRole>} />
       <Route path="/hr/applications/:applicationId" element={<RequireRole role="HR"><CandidateDetails /></RequireRole>} />
       <Route path="/interviewer" element={<RequireRole role="INTERVIEWER"><InterviewerDashboard /></RequireRole>} />
-      <Route path="/interviewer/interviews/:interviewId" element={<RequireRole role="INTERVIEWER"><InterviewDetails /></RequireRole>} />
-      <Route path="/interviewer/interviews/:interviewId/feedback" element={<RequireRole role="INTERVIEWER"><InterviewFeedback /></RequireRole>} />
+      <Route path="/interviewer/applications/:applicationId" element={<RequireRole role="INTERVIEWER"><InterviewerCandidateReview /></RequireRole>} />
     </Routes>
   );
 }

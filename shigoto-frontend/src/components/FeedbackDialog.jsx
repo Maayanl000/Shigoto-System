@@ -1,36 +1,38 @@
-import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Divider, FormControl, IconButton, InputLabel, MenuItem, Select, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, Stack, TextField, Typography } from '@mui/material';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 
-export default function FeedbackDialog({ open, onClose, candidateName = 'Selected candidate' }) {
+export default function FeedbackDialog({ interview, feedback, onFeedbackChange, onClose, onSubmit, busy, error }) {
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open={Boolean(interview)} onClose={busy ? undefined : onClose} fullWidth maxWidth="sm">
       <DialogTitle component="div">
         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
           <div>
             <Typography variant="overline" color="secondary.dark" fontWeight={800}>Interview feedback</Typography>
-            <Typography variant="h6">{candidateName}</Typography>
+            <Typography variant="h6">{interview?.candidateName || 'Selected candidate'}</Typography>
+            {interview && <Typography variant="body2" color="text.secondary">{interview.jobTitle} · {interview.interviewType} interview</Typography>}
           </div>
-          <IconButton aria-label="Close feedback dialog" onClick={onClose} size="small"><CloseRoundedIcon /></IconButton>
+          <IconButton aria-label="Close feedback dialog" onClick={onClose} disabled={busy} size="small"><CloseRoundedIcon /></IconButton>
         </Stack>
       </DialogTitle>
       <Divider />
-      <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
-        <Alert severity="info" icon={false}>Feedback cannot be saved or submitted in this UI preview.</Alert>
-        <FormControl fullWidth size="small" disabled>
-          <InputLabel id="feedback-recommendation-label">Recommendation</InputLabel>
-          <Select labelId="feedback-recommendation-label" label="Recommendation" value="">
-            <MenuItem value="advance">Advance</MenuItem>
-            <MenuItem value="hold">Hold</MenuItem>
-            <MenuItem value="decline">Do not advance</MenuItem>
-          </Select>
-        </FormControl>
-        <TextField label="Strengths" multiline minRows={3} disabled />
-        <TextField label="Concerns" multiline minRows={3} disabled />
-        <TextField label="Additional notes" multiline minRows={3} disabled />
+      <DialogContent sx={{ pt: 3 }}>
+        <TextField
+          label="Feedback"
+          value={feedback}
+          onChange={(event) => onFeedbackChange(event.target.value)}
+          multiline
+          minRows={6}
+          fullWidth
+          autoFocus
+          inputProps={{ maxLength: 10000 }}
+          helperText={`${feedback.length}/10000 · Submitting will mark this interview completed.`}
+          disabled={busy}
+        />
+        {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2.5 }}>
-        <Button onClick={onClose} color="inherit">Cancel</Button>
-        <Button variant="contained" disabled>Submit feedback</Button>
+        <Button onClick={onClose} color="inherit" disabled={busy}>Cancel</Button>
+        <Button variant="contained" onClick={onSubmit} disabled={busy || !feedback.trim()}>{busy ? 'Submitting…' : 'Submit feedback'}</Button>
       </DialogActions>
     </Dialog>
   );

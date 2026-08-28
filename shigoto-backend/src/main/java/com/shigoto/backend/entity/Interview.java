@@ -34,6 +34,9 @@ public class Interview {
     @Column(columnDefinition = "TEXT")
     private String feedback; // כאן המראיין יכתוב את חוות הדעת שלו
 
+    @Column(columnDefinition = "TEXT")
+    private String interviewerNotes;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private InterviewType type;

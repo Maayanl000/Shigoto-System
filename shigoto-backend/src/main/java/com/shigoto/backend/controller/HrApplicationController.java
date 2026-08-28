@@ -4,6 +4,7 @@ import com.shigoto.backend.dto.HrApplicationDetailsDTO;
 import com.shigoto.backend.dto.HomeTaskAssignmentRequestDTO;
 import com.shigoto.backend.dto.HrApplicationStatusUpdateRequestDTO;
 import com.shigoto.backend.dto.HrNotesUpdateRequestDTO;
+import com.shigoto.backend.dto.HrCandidateFeedbackRequestDTO;
 import com.shigoto.backend.entity.User;
 import com.shigoto.backend.service.ApplicationService;
 import com.shigoto.backend.service.AuthService;
@@ -69,6 +70,26 @@ public class HrApplicationController {
         }
         User hr = authService.getAuthenticatedHr(authentication);
         return applicationService.transitionHrApplicationStatus(applicationId, request.status(), hr);
+    }
+
+    @PutMapping("/{applicationId}/reject")
+    public HrApplicationDetailsDTO rejectApplication(
+            @PathVariable Long applicationId,
+            @RequestBody(required = false) HrCandidateFeedbackRequestDTO request,
+            Authentication authentication) {
+        User hr = authService.getAuthenticatedHr(authentication);
+        return applicationService.rejectHrApplication(
+                applicationId, request == null ? null : request.candidateFeedback(), hr);
+    }
+
+    @PutMapping("/{applicationId}/candidate-feedback")
+    public HrApplicationDetailsDTO updateCandidateFeedback(
+            @PathVariable Long applicationId,
+            @RequestBody(required = false) HrCandidateFeedbackRequestDTO request,
+            Authentication authentication) {
+        User hr = authService.getAuthenticatedHr(authentication);
+        return applicationService.updateCandidateFeedback(
+                applicationId, request == null ? null : request.candidateFeedback(), hr);
     }
 
     @PostMapping("/{applicationId}/home-task")
