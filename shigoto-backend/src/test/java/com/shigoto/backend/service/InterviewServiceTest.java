@@ -282,6 +282,37 @@ class InterviewServiceTest {
     }
 
     @Test
+    void candidateAggregatesOnlyOwnInterviewsWithSafeJobContext() {
+        Company company = company(1L, "Wix");
+        User candidate = User.builder().id(3L).role(Role.CANDIDATE).build();
+        Application application = Application.builder().id(7L).candidate(candidate)
+                .job(Job.builder().title("Backend Engineer").company(company).build())
+                .status(ApplicationStatus.TECH_INTERVIEW_SCHEDULED).build();
+        Interview interview = Interview.builder().id(9L).application(application).interviewer(interviewer(5L, company))
+                .scheduledAt(LocalDateTime.now().plusDays(1)).meetingLink("https://meet.example.com/1")
+                .feedback("private feedback").type(InterviewType.TECHNICAL).status(InterviewStatus.SCHEDULED).build();
+        when(interviewRepository.findByApplicationCandidateIdOrderByScheduledAtAsc(3L))
+                .thenReturn(List.of(interview));
+
+        var response = interviewService.getCandidateInterviews(candidate);
+
+        assertEquals(1, response.size());
+        assertEquals(7L, response.getFirst().applicationId());
+        assertEquals("Backend Engineer", response.getFirst().jobTitle());
+        assertEquals("Wix", response.getFirst().companyName());
+        assertFalse(List.of(response.getFirst().getClass().getRecordComponents()).stream()
+                .anyMatch(component -> component.getName().equals("feedback")));
+        verify(interviewRepository).findByApplicationCandidateIdOrderByScheduledAtAsc(3L);
+    }
+
+    @Test
+    void nonCandidateCannotAggregateCandidateInterviews() {
+        assertThrows(org.springframework.security.access.AccessDeniedException.class,
+                () -> interviewService.getCandidateInterviews(hr(company(1L, "Wix"))));
+        verify(interviewRepository, never()).findByApplicationCandidateIdOrderByScheduledAtAsc(any());
+    }
+
+    @Test
     void hrReadsScheduledInterviewsWithInterviewerIdForRescheduling() {
         Company company = company(1L, "Wix");
         Application application = application(company, ApplicationStatus.TECH_INTERVIEW_SCHEDULED);

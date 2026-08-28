@@ -14,18 +14,24 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/applications")
+@RequestMapping("/api")
 @RequiredArgsConstructor
 public class CandidateInterviewController {
 
     private final InterviewService interviewService;
     private final AuthService authService;
 
-    @GetMapping("/{applicationId}/interviews")
+    @GetMapping("/applications/{applicationId}/interviews")
     public ResponseEntity<List<CandidateInterviewResponseDTO>> getInterviewsByApplication(
             @PathVariable Long applicationId,
             Authentication authentication) {
         var candidate = authService.getAuthenticatedCandidate(authentication);
         return ResponseEntity.ok(interviewService.getCandidateInterviews(applicationId, candidate));
+    }
+
+    @GetMapping("/interviews/mine")
+    public ResponseEntity<List<CandidateInterviewResponseDTO>> getMyInterviews(Authentication authentication) {
+        var candidate = authService.getAuthenticatedCandidate(authentication);
+        return ResponseEntity.ok(interviewService.getCandidateInterviews(candidate));
     }
 }

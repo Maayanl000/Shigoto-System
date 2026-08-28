@@ -8,6 +8,8 @@ import java.time.LocalDateTime;
 public record CandidateInterviewResponseDTO(
         Long id,
         Long applicationId,
+        String jobTitle,
+        String companyName,
         String interviewerName,
         LocalDateTime scheduledAt,
         String meetingLink,

@@ -167,19 +167,37 @@ public class InterviewService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<CandidateInterviewResponseDTO> getCandidateInterviews(User candidate) {
+        requireCandidate(candidate);
+        return interviewRepository.findByApplicationCandidateIdOrderByScheduledAtAsc(candidate.getId())
+                .stream()
+                .map(this::toCandidateResponseDTO)
+                .toList();
+    }
+
     private CandidateInterviewResponseDTO toCandidateResponseDTO(Interview interview) {
         User interviewer = interview.getInterviewer();
+        Job job = interview.getApplication().getJob();
         String interviewerName = (interviewer.getFirstName() + " " + interviewer.getLastName()).trim();
 
         return new CandidateInterviewResponseDTO(
                 interview.getId(),
                 interview.getApplication().getId(),
+                job.getTitle(),
+                job.getCompany().getName(),
                 interviewerName,
                 interview.getScheduledAt(),
                 interview.getMeetingLink(),
                 interview.getType(),
                 interview.getStatus()
         );
+    }
+
+    private void requireCandidate(User candidate) {
+        if (candidate == null || candidate.getRole() != Role.CANDIDATE) {
+            throw new AccessDeniedException("Candidate access is required");
+        }
     }
 
     private void requireHrWithCompany(User hr) {

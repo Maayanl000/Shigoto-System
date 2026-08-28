@@ -4,7 +4,10 @@ import com.shigoto.backend.config.SecurityConfig;
 import com.shigoto.backend.dto.ApplicationResponseDTO;
 import com.shigoto.backend.dto.HrApplicationDetailsDTO;
 import com.shigoto.backend.dto.HrInterviewerOptionDTO;
+import com.shigoto.backend.dto.CandidateInterviewResponseDTO;
 import com.shigoto.backend.entity.ApplicationStatus;
+import com.shigoto.backend.entity.InterviewStatus;
+import com.shigoto.backend.entity.InterviewType;
 import com.shigoto.backend.entity.Role;
 import com.shigoto.backend.entity.User;
 import com.shigoto.backend.repository.UserRepository;
@@ -27,6 +30,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.time.LocalDateTime;
 
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
@@ -50,7 +54,8 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
         HrJobController.class,
         HrApplicationController.class,
         HrInterviewController.class,
-        InterviewerTaskController.class
+        InterviewerTaskController.class,
+        CandidateInterviewController.class
 })
 @Import({
         SecurityConfig.class,
@@ -335,6 +340,28 @@ class StaffEndpointSecurityTest {
         mockMvc.perform(get("/api/applications/9").with(user("candidate").roles("CANDIDATE")))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.message").value("Access denied"));
+    }
+
+    @Test
+    void onlyCandidateCanReadOwnAggregatedInterviews() throws Exception {
+        User candidate = User.builder().id(2L).email("candidate@example.com").role(Role.CANDIDATE).build();
+        CandidateInterviewResponseDTO response = new CandidateInterviewResponseDTO(
+                4L, 7L, "Backend Engineer", "Wix", "Dana Levi",
+                LocalDateTime.of(2026, 9, 1, 10, 30), "https://meet.example.com/1",
+                InterviewType.TECHNICAL, InterviewStatus.SCHEDULED);
+        when(authService.getAuthenticatedCandidate(any())).thenReturn(candidate);
+        when(interviewService.getCandidateInterviews(candidate)).thenReturn(List.of(response));
+
+        mockMvc.perform(get("/api/interviews/mine").with(user("candidate").roles("CANDIDATE")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].applicationId").value(7))
+                .andExpect(jsonPath("$[0].jobTitle").value("Backend Engineer"))
+                .andExpect(jsonPath("$[0].companyName").value("Wix"))
+                .andExpect(jsonPath("$[0].feedback").doesNotExist());
+        mockMvc.perform(get("/api/interviews/mine").with(user("hr").roles("HR")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/interviews/mine"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

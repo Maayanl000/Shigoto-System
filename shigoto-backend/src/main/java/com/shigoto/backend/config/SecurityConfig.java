@@ -80,6 +80,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PUT, "/api/applications/{applicationId}").hasRole("HR")
                         .requestMatchers(HttpMethod.DELETE, "/api/applications/{applicationId}").hasRole("HR")
                         .requestMatchers(HttpMethod.POST, "/api/applications").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/interviews/mine").hasRole("CANDIDATE")
                         .requestMatchers(HttpMethod.GET,
                                 "/api/applications/mine",
                                 "/api/applications/{applicationId}",
