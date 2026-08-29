@@ -4,6 +4,7 @@ import { Alert, Box, Button, Card, CardActionArea, CardContent, Chip, CircularPr
 import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded';
 import PageSkeleton from '../components/PageSkeleton';
 import api from '../services/api';
+import { getKanbanDatePresentation, getKanbanStatusLabel } from '../utils/hrKanban';
 
 const columnDefinitions = [
   { title: 'Applied', color: '#64748b', statuses: ['APPLIED'] },
@@ -13,22 +14,16 @@ const columnDefinitions = [
   { title: 'Decision', color: '#d97706', statuses: ['OFFER', 'REJECTED'] },
 ];
 
-const statusLabels = {
-  APPLIED: 'Applied',
-  HR_INTERVIEW: 'HR interview',
-  TASK_SENT: 'Task sent',
-  TASK_SUBMITTED: 'Task submitted',
-  TASK_APPROVED: 'Task approved',
-  TECH_INTERVIEW_SCHEDULED: 'Technical interview scheduled',
-  OFFER: 'Offer',
-  REJECTED: 'Rejected',
-};
-
-function formatAppliedAt(value) {
+function formatKanbanDate(value) {
   if (!value) return 'Date unavailable';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return 'Date unavailable';
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(date);
+}
+
+function formatKanbanTimestamp(application) {
+  const presentation = getKanbanDatePresentation(application);
+  return `${presentation.label} ${formatKanbanDate(presentation.date)}`;
 }
 
 export default function HrDashboard() {
@@ -124,10 +119,10 @@ export default function HrDashboard() {
                         <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
                           <Typography variant="body2" fontWeight={700} sx={{ mb: 0.5 }}>{application.candidateName}</Typography>
                           <Typography variant="caption" color="text.secondary">{application.jobTitle}</Typography>
-                          <Chip label={statusLabels[application.status] || application.status} size="small" variant="outlined" sx={{ display: 'flex', width: 'fit-content', mt: 1.5 }} />
+                          <Chip label={getKanbanStatusLabel(application)} size="small" variant="outlined" sx={{ display: 'flex', width: 'fit-content', mt: 1.5 }} />
                           <Stack direction="row" alignItems="center" spacing={0.4} color="text.secondary" sx={{ mt: 1.25 }}>
                             <AccessTimeRoundedIcon sx={{ fontSize: 14 }} />
-                            <Typography variant="caption">Applied {formatAppliedAt(application.appliedAt)}</Typography>
+                            <Typography variant="caption">{formatKanbanTimestamp(application)}</Typography>
                           </Stack>
                         </CardContent>
                       </CardActionArea>

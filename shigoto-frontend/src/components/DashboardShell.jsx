@@ -13,6 +13,7 @@ import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded';
 import { useAuth } from '../auth/authContext';
+import NotificationBell from './NotificationBell';
 
 const expandedWidth = 248;
 const collapsedWidth = 76;
@@ -166,6 +167,7 @@ export default function DashboardShell({ children }) {
         <Toolbar sx={{ minHeight: 64 }}>
           <IconButton aria-label="Open workspace navigation" onClick={() => setMobileOpen(true)} sx={{ display: { md: 'none' }, mr: 1 }}><MenuRoundedIcon /></IconButton>
           <Box sx={{ flex: 1 }}><Typography variant="body2" fontWeight={700}>{config.label}</Typography><Typography variant="caption" color="text.secondary">{user?.firstName} {user?.lastName}</Typography></Box>
+          {activeArea === 'candidate' && <NotificationBell />}
           <Chip label={staffCompany ? `${user?.role} · ${staffCompany}` : user?.role} size="small" variant="outlined" sx={{ mr: 1.5 }} />
           <Avatar sx={{ width: 34, height: 34, bgcolor: 'secondary.main', fontSize: 13 }}>{userInitials}</Avatar>
         </Toolbar>

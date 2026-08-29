@@ -17,7 +17,7 @@ const activeStatuses = new Set([
 const pastStatuses = new Set(['OFFER', 'REJECTED']);
 
 function fetchCandidateDashboard() {
-  return Promise.all([api.get('/applications/mine'), api.get('/interviews/mine')]);
+  return Promise.all([api.get('/applications/mine'), api.get('/interviews/mine'), api.get('/notifications/mine')]);
 }
 
 function formatDate(value, includeTime = false) {
@@ -114,6 +114,7 @@ function InterviewCard({ interview, upcoming = false }) {
 export default function CandidateDashboard() {
   const [applications, setApplications] = useState([]);
   const [interviews, setInterviews] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [dashboardMode, setDashboardMode] = useState('active');
   const [selectedView, setSelectedView] = useState('active');
   const [loading, setLoading] = useState(true);
@@ -123,9 +124,12 @@ export default function CandidateDashboard() {
     setLoading(true);
     setLoadError('');
     try {
-      const [applicationsResponse, interviewsResponse] = await fetchCandidateDashboard();
+      const [applicationsResponse, interviewsResponse, notificationsResponse] = await fetchCandidateDashboard();
       setApplications(Array.isArray(applicationsResponse.data) ? applicationsResponse.data : []);
       setInterviews(Array.isArray(interviewsResponse.data) ? interviewsResponse.data : []);
+      const loadedNotifications = Array.isArray(notificationsResponse.data) ? notificationsResponse.data : [];
+      setNotifications(loadedNotifications);
+      setDashboardMode(loadedNotifications.some((item) => !item.read) ? 'updates' : 'active');
     } catch (requestError) {
       setApplications([]);
       setInterviews([]);
@@ -138,10 +142,13 @@ export default function CandidateDashboard() {
   useEffect(() => {
     let active = true;
     fetchCandidateDashboard()
-      .then(([applicationsResponse, interviewsResponse]) => {
+      .then(([applicationsResponse, interviewsResponse, notificationsResponse]) => {
         if (!active) return;
         setApplications(Array.isArray(applicationsResponse.data) ? applicationsResponse.data : []);
         setInterviews(Array.isArray(interviewsResponse.data) ? interviewsResponse.data : []);
+        const loadedNotifications = Array.isArray(notificationsResponse.data) ? notificationsResponse.data : [];
+        setNotifications(loadedNotifications);
+        setDashboardMode(loadedNotifications.some((item) => !item.read) ? 'updates' : 'active');
       })
       .catch((requestError) => {
         if (!active) return;
@@ -158,6 +165,15 @@ export default function CandidateDashboard() {
   const pastApplications = useMemo(() => applications.filter((item) => pastStatuses.has(item.status)), [applications]);
   const upcomingInterviews = useMemo(() => interviews.filter((item) => item.status === 'SCHEDULED'), [interviews]);
   const interviewHistory = useMemo(() => interviews.filter((item) => ['COMPLETED', 'CANCELED'].includes(item.status)), [interviews]);
+  const unreadCount = notifications.filter((item) => !item.read).length;
+
+  const openUpdate = async (notification) => {
+    if (!notification.read) {
+      await api.put(`/notifications/${notification.notificationId}/read`);
+      setNotifications((items) => items.map((item) => item.notificationId === notification.notificationId ? { ...item, read: true } : item));
+      window.dispatchEvent(new Event('shigoto:notifications-changed'));
+    }
+  };
 
   const summaryCards = [
     { id: 'active', label: 'Active applications', value: activeApplications.length, icon: <WorkOutlineRoundedIcon />, tone: 'primary' },
@@ -170,6 +186,7 @@ export default function CandidateDashboard() {
       <Grid container spacing={2.5}>
         <Grid size={12}>
           <Tabs value={dashboardMode} onChange={(_, value) => setDashboardMode(value)} aria-label="Candidate dashboard mode">
+            <Tab value="updates" label={`Updates${unreadCount ? ` (${unreadCount})` : ''}`} />
             <Tab value="active" label="Active" />
             <Tab value="history" label="History" />
           </Tabs>
@@ -203,6 +220,17 @@ export default function CandidateDashboard() {
               <Typography variant="h5">Active applications</Typography>
               {activeApplications.length ? activeApplications.map((item) => <ApplicationCard key={item.id} application={item} />)
                 : <EmptyState title="No active applications" description="Your active applications will appear here." />}
+            </Stack>
+          )}
+          {!loading && !loadError && dashboardMode === 'updates' && (
+            <Stack spacing={2}>
+              <Box><Typography variant="h5">What's new</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: .5 }}>Unread updates appear first. Read state is saved to your account.</Typography></Box>
+              {notifications.length ? notifications.map((item) => <Card key={item.notificationId} variant={item.read ? 'outlined' : undefined}
+                sx={{ borderLeft: 4, borderLeftColor: item.read ? 'divider' : 'primary.main', bgcolor: item.read ? 'background.paper' : 'action.hover' }}>
+                <CardActionArea component={Link} to={item.applicationId ? `/candidate/applications/${item.applicationId}` : '/candidate'} onClick={() => openUpdate(item)}>
+                  <CardContent><Stack direction="row" justifyContent="space-between" spacing={2}><Box><Typography variant="h6">{item.title}{!item.read && <Typography component="span" variant="caption" fontWeight={900}> · New</Typography>}</Typography><Typography variant="body2" sx={{ mt: .75 }}>{item.message}</Typography><Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>{formatDate(item.createdAt, true)}</Typography></Box><ArrowForwardRoundedIcon color="primary" /></Stack></CardContent>
+                </CardActionArea>
+              </Card>) : <EmptyState title="No updates yet" description="Recruitment updates will appear here when there is something new." />}
             </Stack>
           )}
           {!loading && !loadError && dashboardMode === 'active' && selectedView === 'tasks' && (

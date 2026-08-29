@@ -5,6 +5,7 @@ import com.shigoto.backend.dto.ApplicationResponseDTO;
 import com.shigoto.backend.dto.HrApplicationDetailsDTO;
 import com.shigoto.backend.dto.HrInterviewerOptionDTO;
 import com.shigoto.backend.dto.CandidateInterviewResponseDTO;
+import com.shigoto.backend.dto.NotificationResponseDTO;
 import com.shigoto.backend.entity.ApplicationStatus;
 import com.shigoto.backend.entity.InterviewStatus;
 import com.shigoto.backend.entity.InterviewType;
@@ -17,6 +18,7 @@ import com.shigoto.backend.service.ApplicationService;
 import com.shigoto.backend.service.AuthService;
 import com.shigoto.backend.service.InterviewService;
 import com.shigoto.backend.service.JobService;
+import com.shigoto.backend.service.NotificationService;
 import com.shigoto.backend.service.UserService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,7 +58,8 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
         HrInterviewController.class,
         InterviewerTaskController.class,
         InterviewerInterviewController.class,
-        CandidateInterviewController.class
+        CandidateInterviewController.class,
+        NotificationController.class
 })
 @Import({
         SecurityConfig.class,
@@ -79,6 +82,8 @@ class StaffEndpointSecurityTest {
     private JobService jobService;
     @MockitoBean
     private InterviewService interviewService;
+    @MockitoBean
+    private NotificationService notificationService;
     @MockitoBean
     private UserRepository userRepository;
     @MockitoBean
@@ -320,6 +325,56 @@ class StaffEndpointSecurityTest {
                         .header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
                         .header().string("Access-Control-Allow-Credentials", "true"));
+    }
+
+    @Test
+    void notificationCorsPreflightIsNotBlockedByAuthentication() throws Exception {
+        for (var request : List.of(
+                options("/api/notifications/mine")
+                        .header("Access-Control-Request-Method", "GET"),
+                options("/api/notifications/42/read")
+                        .header("Access-Control-Request-Method", "PUT"))) {
+            mockMvc.perform(request
+                            .header("Origin", "http://localhost:5173")
+                            .header("Access-Control-Request-Headers", "X-XSRF-TOKEN"))
+                    .andExpect(status().isOk())
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                            .header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                            .header().string("Access-Control-Allow-Credentials", "true"));
+        }
+    }
+
+    @Test
+    void notificationEndpointsRemainCandidateOnly() throws Exception {
+        mockMvc.perform(get("/api/notifications/mine"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/notifications/mine").with(user("hr").roles("HR")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/notifications/42/read")
+                        .with(user("interviewer").roles("INTERVIEWER")).with(csrf()))
+                .andExpect(status().isForbidden());
+
+        User candidate = User.builder().id(2L).email("candidate@example.com").role(Role.CANDIDATE).build();
+        NotificationResponseDTO response = new NotificationResponseDTO(
+                42L, com.shigoto.backend.entity.NotificationType.HOME_TASK_ASSIGNED,
+                "New home task", "A home task was assigned.", 7L, null, LocalDateTime.now(), false);
+        when(authService.getAuthenticatedCandidate(any())).thenReturn(candidate);
+        when(notificationService.mine(candidate)).thenReturn(List.of(response));
+        when(notificationService.markRead(42L, candidate)).thenReturn(new NotificationResponseDTO(
+                response.notificationId(), response.type(), response.title(), response.message(),
+                response.applicationId(), response.interviewId(), response.createdAt(), true));
+
+        mockMvc.perform(get("/api/notifications/mine").with(user("candidate").roles("CANDIDATE")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].notificationId").value(42));
+        mockMvc.perform(put("/api/notifications/42/read")
+                        .with(user("candidate").roles("CANDIDATE")).with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.read").value(true));
+
+        verify(notificationService).mine(candidate);
+        verify(notificationService).markRead(42L, candidate);
     }
 
     @Test

@@ -16,6 +16,7 @@ import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.ApplicationRepository;
 import com.shigoto.backend.repository.InterviewRepository;
 import com.shigoto.backend.repository.UserRepository;
+import com.shigoto.backend.messaging.NotificationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.AccessDeniedException;
@@ -44,7 +45,8 @@ class InterviewServiceTest {
         interviewRepository = mock(InterviewRepository.class);
         applicationRepository = mock(ApplicationRepository.class);
         userRepository = mock(UserRepository.class);
-        interviewService = new InterviewService(interviewRepository, applicationRepository, userRepository);
+        interviewService = new InterviewService(interviewRepository, applicationRepository, userRepository,
+                mock(NotificationEventPublisher.class));
     }
 
     @Test
@@ -506,7 +508,8 @@ class InterviewServiceTest {
     }
 
     private Application application(Company company, ApplicationStatus status) {
-        return Application.builder().id(7L).job(Job.builder().company(company).build()).status(status).build();
+        return Application.builder().id(7L).candidate(User.builder().id(3L).role(Role.CANDIDATE).build())
+                .job(Job.builder().company(company).build()).status(status).build();
     }
 
     private User interviewer(Long id, Company company) {

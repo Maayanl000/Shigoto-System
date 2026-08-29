@@ -8,14 +8,20 @@ import com.shigoto.backend.entity.JobStatus;
 import com.shigoto.backend.entity.Role;
 import com.shigoto.backend.entity.User;
 import com.shigoto.backend.entity.TaskReviewDecision;
+import com.shigoto.backend.entity.Interview;
+import com.shigoto.backend.entity.InterviewStatus;
+import com.shigoto.backend.entity.InterviewType;
 import com.shigoto.backend.dto.InterviewerSubmittedTaskDTO;
 import com.shigoto.backend.dto.ApplicationResponseDTO;
 import com.shigoto.backend.dto.HrApplicationDetailsDTO;
+import com.shigoto.backend.dto.HrApplicationSummaryDTO;
 import com.shigoto.backend.exception.DuplicateApplicationException;
 import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.ApplicationRepository;
 import com.shigoto.backend.repository.JobRepository;
 import com.shigoto.backend.repository.UserRepository;
+import com.shigoto.backend.repository.InterviewRepository;
+import com.shigoto.backend.messaging.NotificationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
@@ -41,13 +47,18 @@ class ApplicationServiceTest {
     private ApplicationRepository applicationRepository;
     private ApplicationService applicationService;
     private CvStorageService cvStorageService;
+    private NotificationEventPublisher notificationEventPublisher;
+    private InterviewRepository interviewRepository;
 
     @BeforeEach
     void setUp() {
         applicationRepository = mock(ApplicationRepository.class);
         cvStorageService = mock(CvStorageService.class);
+        notificationEventPublisher = mock(NotificationEventPublisher.class);
+        interviewRepository = mock(InterviewRepository.class);
         applicationService = new ApplicationService(
-                applicationRepository, mock(UserRepository.class), mock(JobRepository.class), cvStorageService);
+                applicationRepository, mock(UserRepository.class), mock(JobRepository.class), cvStorageService,
+                notificationEventPublisher, interviewRepository);
     }
 
     @Test
@@ -145,7 +156,8 @@ class ApplicationServiceTest {
                 .status(JobStatus.OPEN).build();
         JobRepository jobRepository = mock(JobRepository.class);
         applicationService = new ApplicationService(
-                applicationRepository, mock(UserRepository.class), jobRepository, cvStorageService);
+                applicationRepository, mock(UserRepository.class), jobRepository, cvStorageService,
+                notificationEventPublisher, interviewRepository);
         when(jobRepository.findById(2L)).thenReturn(Optional.of(job));
         when(applicationRepository.existsByCandidateIdAndJobId(3L, 2L)).thenReturn(false);
         when(cvStorageService.store(any())).thenReturn("123e4567-e89b-12d3-a456-426614174000.pdf");
@@ -171,7 +183,8 @@ class ApplicationServiceTest {
         Job job = Job.builder().id(2L).status(JobStatus.OPEN).build();
         JobRepository jobRepository = mock(JobRepository.class);
         applicationService = new ApplicationService(
-                applicationRepository, mock(UserRepository.class), jobRepository, cvStorageService);
+                applicationRepository, mock(UserRepository.class), jobRepository, cvStorageService,
+                notificationEventPublisher, interviewRepository);
         String storageKey = "123e4567-e89b-12d3-a456-426614174000.pdf";
         when(jobRepository.findById(2L)).thenReturn(Optional.of(job));
         when(cvStorageService.store(any())).thenReturn(storageKey);
@@ -236,7 +249,15 @@ class ApplicationServiceTest {
         Application otherCompanyApplication = Application.builder()
                 .id(2L).candidate(candidate(4L))
                 .job(Job.builder().id(3L).company(otherCompany).build()).build();
+        Interview completedTechnical = Interview.builder().application(ownCompanyApplication)
+                .type(InterviewType.TECHNICAL).status(InterviewStatus.COMPLETED)
+                .scheduledAt(LocalDateTime.of(2026, 8, 22, 10, 0)).build();
+        Interview scheduledManager = Interview.builder().application(ownCompanyApplication)
+                .type(InterviewType.MANAGER).status(InterviewStatus.SCHEDULED)
+                .scheduledAt(LocalDateTime.of(2026, 8, 25, 10, 0)).build();
         when(applicationRepository.findByJobCompany(hrCompany)).thenReturn(List.of(ownCompanyApplication));
+        when(interviewRepository.findFirstByApplicationIdAndStatusOrderByScheduledAtDesc(
+                1L, InterviewStatus.SCHEDULED)).thenReturn(Optional.of(scheduledManager));
 
         var applications = applicationService.getAllApplications(hr);
 
@@ -245,6 +266,15 @@ class ApplicationServiceTest {
         assertEquals("Backend Engineer", applications.getFirst().jobTitle());
         assertEquals(ApplicationStatus.HR_INTERVIEW, applications.getFirst().status());
         assertEquals(appliedAt, applications.getFirst().appliedAt());
+        assertEquals(null, applications.getFirst().statusChangedAt());
+        assertEquals(InterviewType.MANAGER, applications.getFirst().activeInterviewType());
+        assertEquals(InterviewStatus.COMPLETED, completedTechnical.getStatus());
+        verify(interviewRepository).findFirstByApplicationIdAndStatusOrderByScheduledAtDesc(
+                1L, InterviewStatus.SCHEDULED);
+        LocalDateTime realStatusChange = LocalDateTime.of(2026, 8, 23, 9, 15);
+        ownCompanyApplication.setStatusChangedAt(realStatusChange);
+        assertEquals(realStatusChange,
+                HrApplicationSummaryDTO.from(ownCompanyApplication, InterviewType.MANAGER).statusChangedAt());
         verify(applicationRepository).findByJobCompany(hrCompany);
         verify(applicationRepository, never()).findAll();
         org.junit.jupiter.api.Assertions.assertFalse(

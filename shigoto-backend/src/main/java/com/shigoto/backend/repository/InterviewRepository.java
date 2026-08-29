@@ -15,6 +15,9 @@ public interface InterviewRepository extends JpaRepository<Interview, Long> {
     // פעולה שתעזור לנו בהמשך לשלוף את כל הראיונות שנקבעו למועמדות מסוימת
     List<Interview> findByApplicationIdOrderByScheduledAtAsc(Long applicationId);
 
+    Optional<Interview> findFirstByApplicationIdAndStatusOrderByScheduledAtDesc(
+            Long applicationId, InterviewStatus status);
+
     List<Interview> findByApplicationCandidateIdOrderByScheduledAtAsc(Long candidateId);
 
     List<Interview> findByInterviewerIdOrderByScheduledAtAsc(Long interviewerId);

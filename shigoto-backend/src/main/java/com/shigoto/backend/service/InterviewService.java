@@ -12,6 +12,8 @@ import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.ApplicationRepository;
 import com.shigoto.backend.repository.InterviewRepository;
 import com.shigoto.backend.repository.UserRepository;
+import com.shigoto.backend.messaging.CandidateNotificationEvent;
+import com.shigoto.backend.messaging.NotificationEventPublisher;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.security.access.AccessDeniedException;
@@ -30,6 +32,7 @@ public class InterviewService {
     private final InterviewRepository interviewRepository;
     private final ApplicationRepository applicationRepository;
     private final UserRepository userRepository;
+    private final NotificationEventPublisher notificationEventPublisher;
 
     @Transactional
     public HrScheduledInterviewResponseDTO scheduleInterview(
@@ -75,12 +78,14 @@ public class InterviewService {
                 .status(InterviewStatus.SCHEDULED)
                 .build();
         if (request.type() == InterviewType.TECHNICAL) {
-            application.setStatus(ApplicationStatus.TECH_INTERVIEW_SCHEDULED);
+            application.transitionTo(ApplicationStatus.TECH_INTERVIEW_SCHEDULED);
         } else if (request.type() == InterviewType.HR) {
-            application.setStatus(ApplicationStatus.HR_INTERVIEW);
+            application.transitionTo(ApplicationStatus.HR_INTERVIEW);
         }
         applicationRepository.save(application);
-        return HrScheduledInterviewResponseDTO.from(interviewRepository.save(interview));
+        Interview saved = interviewRepository.save(interview);
+        publish(saved, NotificationType.INTERVIEW_SCHEDULED);
+        return HrScheduledInterviewResponseDTO.from(saved);
     }
 
     @Transactional(readOnly = true)
@@ -122,7 +127,9 @@ public class InterviewService {
         interview.setInterviewer(interviewer);
         interview.setScheduledAt(request.scheduledAt());
         interview.setMeetingLink(meetingLink);
-        return HrScheduledInterviewResponseDTO.from(interviewRepository.save(interview));
+        Interview saved = interviewRepository.save(interview);
+        publish(saved, NotificationType.INTERVIEW_RESCHEDULED);
+        return HrScheduledInterviewResponseDTO.from(saved);
     }
 
     @Transactional
@@ -137,10 +144,12 @@ public class InterviewService {
                 && application.getStatus() == ApplicationStatus.TECH_INTERVIEW_SCHEDULED
                 && !interviewRepository.existsByApplicationIdAndTypeAndStatusAndIdNot(
                         application.getId(), InterviewType.TECHNICAL, InterviewStatus.SCHEDULED, interviewId)) {
-            application.setStatus(ApplicationStatus.TASK_APPROVED);
+            application.transitionTo(ApplicationStatus.TASK_APPROVED);
             applicationRepository.save(application);
         }
-        return HrScheduledInterviewResponseDTO.from(interviewRepository.save(interview));
+        Interview saved = interviewRepository.save(interview);
+        publish(saved, NotificationType.INTERVIEW_CANCELED);
+        return HrScheduledInterviewResponseDTO.from(saved);
     }
 
     @Transactional(readOnly = true)
@@ -316,5 +325,11 @@ public class InterviewService {
         } catch (URISyntaxException ex) {
             throw new IllegalArgumentException("Meeting link must be a valid HTTP or HTTPS URL");
         }
+    }
+
+    private void publish(Interview interview, NotificationType type) {
+        Application application = interview.getApplication();
+        notificationEventPublisher.publishAfterCommit(CandidateNotificationEvent.of(type,
+                application.getCandidate().getId(), application.getId(), interview.getId()));
     }
 }

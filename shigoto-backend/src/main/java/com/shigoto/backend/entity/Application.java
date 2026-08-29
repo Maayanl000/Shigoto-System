@@ -61,11 +61,25 @@ public class Application {
     @Column(updatable = false)
     private LocalDateTime appliedAt;
 
+    private LocalDateTime statusChangedAt;
+
     @PrePersist
     protected void onCreate() {
-        this.appliedAt = LocalDateTime.now();
+        LocalDateTime createdAt = LocalDateTime.now();
+        this.appliedAt = createdAt;
+        this.statusChangedAt = createdAt;
         if (this.status == null) {
             this.status = ApplicationStatus.APPLIED; // סטטוס ברירת מחדל
+        }
+    }
+
+    public void transitionTo(ApplicationStatus newStatus) {
+        if (newStatus == null) {
+            throw new IllegalArgumentException("Application status is required");
+        }
+        if (newStatus != this.status) {
+            this.status = newStatus;
+            this.statusChangedAt = LocalDateTime.now();
         }
     }
 }

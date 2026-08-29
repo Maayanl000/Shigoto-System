@@ -64,6 +64,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/api/hr/interviewers").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/api/hr/interviews/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/api/interviewer/**").permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/api/notifications/**").permitAll()
                         .requestMatchers("/api/hr/applications/**").hasRole("HR")
                         .requestMatchers("/api/hr/interviewers").hasRole("HR")
                         .requestMatchers("/api/hr/interviews/**").hasRole("HR")
@@ -81,6 +82,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/applications/{applicationId}").hasRole("HR")
                         .requestMatchers(HttpMethod.POST, "/api/applications").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/interviews/mine").hasRole("CANDIDATE")
+                        .requestMatchers("/api/notifications/**").hasRole("CANDIDATE")
                         .requestMatchers(HttpMethod.GET,
                                 "/api/applications/mine",
                                 "/api/applications/{applicationId}",

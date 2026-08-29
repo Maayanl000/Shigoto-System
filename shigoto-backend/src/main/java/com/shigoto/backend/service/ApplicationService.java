@@ -15,7 +15,11 @@ import com.shigoto.backend.exception.DuplicateApplicationException;
 import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.ApplicationRepository;
 import com.shigoto.backend.repository.JobRepository;
+import com.shigoto.backend.repository.InterviewRepository;
 import com.shigoto.backend.repository.UserRepository;
+import com.shigoto.backend.messaging.CandidateNotificationEvent;
+import com.shigoto.backend.messaging.NotificationEventPublisher;
+import com.shigoto.backend.entity.NotificationType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.core.io.Resource;
@@ -39,6 +43,8 @@ public class ApplicationService {
     private final UserRepository userRepository;
     private final JobRepository jobRepository;
     private final CvStorageService cvStorageService;
+    private final NotificationEventPublisher notificationEventPublisher;
+    private final InterviewRepository interviewRepository;
 
     @Transactional
     public ApplicationResponseDTO createApplication(User candidate, Long jobId, String coverLetter, MultipartFile cv) {
@@ -90,7 +96,11 @@ public class ApplicationService {
         requireHrWithCompany(hr);
         return applicationRepository.findByJobCompany(hr.getCompany())
                 .stream()
-                .map(HrApplicationSummaryDTO::from)
+                .map(application -> HrApplicationSummaryDTO.from(application,
+                        interviewRepository.findFirstByApplicationIdAndStatusOrderByScheduledAtDesc(
+                                        application.getId(), com.shigoto.backend.entity.InterviewStatus.SCHEDULED)
+                                .map(com.shigoto.backend.entity.Interview::getType)
+                                .orElse(null)))
                 .toList();
     }
 
@@ -125,8 +135,10 @@ public class ApplicationService {
             throw new IllegalArgumentException(
                     "Application cannot move from " + currentStatus + " to " + targetStatus);
         }
-        application.setStatus(targetStatus);
-        return HrApplicationDetailsDTO.from(applicationRepository.save(application));
+        application.transitionTo(targetStatus);
+        HrApplicationDetailsDTO result = HrApplicationDetailsDTO.from(applicationRepository.save(application));
+        if (targetStatus == ApplicationStatus.REJECTED) publish(application, NotificationType.APPLICATION_REJECTED);
+        return result;
     }
 
     @Transactional
@@ -138,8 +150,10 @@ public class ApplicationService {
                     "Application cannot move from " + application.getStatus() + " to REJECTED");
         }
         application.setCandidateFeedback(normalizeCandidateFeedback(candidateFeedback));
-        application.setStatus(ApplicationStatus.REJECTED);
-        return HrApplicationDetailsDTO.from(applicationRepository.save(application));
+        application.transitionTo(ApplicationStatus.REJECTED);
+        HrApplicationDetailsDTO result = HrApplicationDetailsDTO.from(applicationRepository.save(application));
+        publish(application, NotificationType.APPLICATION_REJECTED);
+        return result;
     }
 
     @Transactional
@@ -173,8 +187,10 @@ public class ApplicationService {
         application.setTaskInstructions(normalizedInstructions);
         application.setTaskDeadline(deadline);
         application.setTaskRepoUrl(null);
-        application.setStatus(ApplicationStatus.TASK_SENT);
-        return HrApplicationDetailsDTO.from(applicationRepository.save(application));
+        application.transitionTo(ApplicationStatus.TASK_SENT);
+        HrApplicationDetailsDTO result = HrApplicationDetailsDTO.from(applicationRepository.save(application));
+        publish(application, NotificationType.HOME_TASK_ASSIGNED);
+        return result;
     }
 
     private boolean isAllowedHrTransition(ApplicationStatus currentStatus, ApplicationStatus targetStatus) {
@@ -209,9 +225,11 @@ public class ApplicationService {
         if (application.getStatus() != ApplicationStatus.TASK_SUBMITTED) {
             throw new IllegalArgumentException("Only a submitted task can be reviewed");
         }
-        application.setStatus(decision == TaskReviewDecision.APPROVE
+        application.transitionTo(decision == TaskReviewDecision.APPROVE
                 ? ApplicationStatus.TASK_APPROVED : ApplicationStatus.REJECTED);
-        return InterviewerSubmittedTaskDTO.from(applicationRepository.save(application));
+        InterviewerSubmittedTaskDTO result = InterviewerSubmittedTaskDTO.from(applicationRepository.save(application));
+        if (decision == TaskReviewDecision.REJECT) publish(application, NotificationType.APPLICATION_REJECTED);
+        return result;
     }
 
     @Transactional
@@ -283,7 +301,7 @@ public class ApplicationService {
 
         String normalizedRepositoryUrl = validateRepositoryUrl(repositoryUrl);
         application.setTaskRepoUrl(normalizedRepositoryUrl);
-        application.setStatus(ApplicationStatus.TASK_SUBMITTED);
+        application.transitionTo(ApplicationStatus.TASK_SUBMITTED);
 
         return toResponseDTO(applicationRepository.save(application));
     }
@@ -392,5 +410,10 @@ public class ApplicationService {
             throw new IllegalArgumentException("Candidate feedback must not exceed 10000 characters");
         }
         return normalized;
+    }
+
+    private void publish(Application application, NotificationType type) {
+        notificationEventPublisher.publishAfterCommit(CandidateNotificationEvent.of(type,
+                application.getCandidate().getId(), application.getId(), null));
     }
 }

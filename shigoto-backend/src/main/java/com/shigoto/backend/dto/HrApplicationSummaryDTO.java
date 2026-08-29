@@ -2,6 +2,7 @@ package com.shigoto.backend.dto;
 
 import com.shigoto.backend.entity.Application;
 import com.shigoto.backend.entity.ApplicationStatus;
+import com.shigoto.backend.entity.InterviewType;
 
 import java.time.LocalDateTime;
 
@@ -12,9 +13,11 @@ public record HrApplicationSummaryDTO(
         Long jobId,
         String jobTitle,
         ApplicationStatus status,
-        LocalDateTime appliedAt
+        LocalDateTime appliedAt,
+        LocalDateTime statusChangedAt,
+        InterviewType activeInterviewType
 ) {
-    public static HrApplicationSummaryDTO from(Application application) {
+    public static HrApplicationSummaryDTO from(Application application, InterviewType activeInterviewType) {
         var candidate = application.getCandidate();
         var job = application.getJob();
         return new HrApplicationSummaryDTO(
@@ -24,7 +27,9 @@ public record HrApplicationSummaryDTO(
                 job.getId(),
                 job.getTitle(),
                 application.getStatus(),
-                application.getAppliedAt()
+                application.getAppliedAt(),
+                application.getStatusChangedAt(),
+                activeInterviewType
         );
     }
 }
