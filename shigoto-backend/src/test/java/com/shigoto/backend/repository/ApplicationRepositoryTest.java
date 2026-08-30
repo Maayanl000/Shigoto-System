@@ -44,10 +44,10 @@ class ApplicationRepositoryTest {
                 values (?, ?, ?, ?, ?, ?, ?)
                 """, candidateId, "Test", "Candidate", "candidate-" + idBase + "@example.com",
                 "encoded-password", "CANDIDATE", false);
-        insert("insert into applications (id, candidate_id, job_id, status) values (?, ?, ?, ?)",
-                applicationAId, candidateId, jobAId, "APPLIED");
-        insert("insert into applications (id, candidate_id, job_id, status) values (?, ?, ?, ?)",
-                applicationBId, candidateId, jobBId, "APPLIED");
+        insert("insert into applications (id, candidate_id, job_id, status, version) values (?, ?, ?, ?, ?)",
+                applicationAId, candidateId, jobAId, "APPLIED", 0L);
+        insert("insert into applications (id, candidate_id, job_id, status, version) values (?, ?, ?, ?, ?)",
+                applicationBId, candidateId, jobBId, "APPLIED", 0L);
         entityManager.clear();
 
         Company companyA = entityManager.find(Company.class, companyAId);

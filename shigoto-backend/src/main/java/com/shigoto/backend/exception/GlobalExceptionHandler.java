@@ -1,6 +1,7 @@
 package com.shigoto.backend.exception;
 
 import com.shigoto.backend.dto.ErrorResponseDTO;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.AuthenticationException;
@@ -15,6 +16,9 @@ import java.time.LocalDateTime;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final String STALE_WRITE_MESSAGE =
+            "This record was updated by another user. Refresh and try again.";
 
     // הפונקציה הזו תופסת את כל שגיאות ה-ResourceNotFoundException במערכת
     @ExceptionHandler(ResourceNotFoundException.class)
@@ -42,6 +46,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DuplicateEmailException.class)
     public ResponseEntity<ErrorResponseDTO> handleDuplicateEmail(DuplicateEmailException ex) {
         return buildErrorResponse(ex.getMessage(), HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponseDTO> handleOptimisticLockingFailure(
+            OptimisticLockingFailureException ex) {
+        return buildErrorResponse(STALE_WRITE_MESSAGE, HttpStatus.CONFLICT);
     }
 
     @ExceptionHandler(AuthenticationException.class)
