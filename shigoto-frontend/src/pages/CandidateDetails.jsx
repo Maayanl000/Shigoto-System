@@ -31,6 +31,13 @@ function formatDate(value) {
   }).format(date);
 }
 
+function toLocalDateTimeInput(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? ''
+    : new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
 function Detail({ label, value }) {
   return <Box><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2" sx={{ mt: 0.25 }}>{display(value)}</Typography></Box>;
 }
@@ -49,6 +56,8 @@ export default function CandidateDetails() {
   const [statusMessage, setStatusMessage] = useState('');
   const [taskDeadline, setTaskDeadline] = useState('');
   const [taskInstructions, setTaskInstructions] = useState('');
+  const [editingTaskDeadline, setEditingTaskDeadline] = useState(false);
+  const [deadlineBusy, setDeadlineBusy] = useState(false);
   const [interviewers, setInterviewers] = useState([]);
   const [interviewersLoading, setInterviewersLoading] = useState(true);
   const [interviewersError, setInterviewersError] = useState('');
@@ -266,6 +275,29 @@ export default function CandidateDetails() {
     }
   };
 
+  const updateHomeTaskDeadline = async () => {
+    const parsedDeadline = new Date(taskDeadline);
+    if (!taskDeadline || Number.isNaN(parsedDeadline.getTime()) || parsedDeadline <= new Date()) {
+      setStatusMessage('Choose a future deadline before updating the home task.');
+      return;
+    }
+    setDeadlineBusy(true);
+    setStatusMessage('');
+    try {
+      const response = await api.put(`/hr/applications/${applicationId}/home-task/deadline`, {
+        deadline: taskDeadline,
+      });
+      setRecord(response.data);
+      setEditingTaskDeadline(false);
+      setTaskDeadline('');
+      setStatusMessage('Home task deadline updated.');
+    } catch (requestError) {
+      setStatusMessage(requestError.response?.data?.message || 'Could not update the home task deadline.');
+    } finally {
+      setDeadlineBusy(false);
+    }
+  };
+
   const scheduleInterview = async () => {
     const scheduledAt = new Date(interviewTime);
     if ((!editingInterviewId && !selectedInterviewType) || !interviewerId || !interviewTime || Number.isNaN(scheduledAt.getTime())
@@ -399,6 +431,27 @@ export default function CandidateDetails() {
                 {record.status === 'TASK_SUBMITTED' && <Alert severity="info">Submitted task is awaiting technical review.</Alert>}
                 {record.status === 'TASK_APPROVED' && <Alert severity="success">Technical review passed.</Alert>}
                 <Detail label="Deadline" value={formatDate(record.taskDeadline)} />
+                {record.status === 'TASK_SENT' && (!editingTaskDeadline ? (
+                  <Button variant="outlined" onClick={() => {
+                    setTaskDeadline(toLocalDateTimeInput(record.taskDeadline));
+                    setStatusMessage('');
+                    setEditingTaskDeadline(true);
+                  }}>Update deadline</Button>
+                ) : (
+                  <Stack spacing={1.25}>
+                    <TextField
+                      label="Updated home task deadline"
+                      type="datetime-local"
+                      value={taskDeadline}
+                      onChange={(event) => { setTaskDeadline(event.target.value); setStatusMessage(''); }}
+                      slotProps={{ inputLabel: { shrink: true } }}
+                    />
+                    <Stack direction="row" spacing={1}>
+                      <Button variant="contained" onClick={updateHomeTaskDeadline} disabled={deadlineBusy || !taskDeadline}>{deadlineBusy ? 'Updating…' : 'Save deadline'}</Button>
+                      <Button onClick={() => { setEditingTaskDeadline(false); setTaskDeadline(''); setStatusMessage(''); }} disabled={deadlineBusy}>Cancel</Button>
+                    </Stack>
+                  </Stack>
+                ))}
                 {record.taskRepoUrl ? <Link href={record.taskRepoUrl} target="_blank" rel="noopener noreferrer">Submitted repository</Link> : <Detail label="Repository" value={null} />}
                 {record.status === 'HR_INTERVIEW' && (
                   <Stack spacing={1.25}>
@@ -502,7 +555,7 @@ export default function CandidateDetails() {
                   ))}
                 </Stack>
               ) : <Typography variant="body2" color="text.secondary">No HR status actions are available at this stage.</Typography>}
-              {statusMessage && <Alert severity={statusMessage.startsWith('Status updated') || statusMessage === 'Home task sent.' || statusMessage === 'Candidate rejected.' ? 'success' : 'error'} sx={{ mt: 2 }}>{statusMessage}</Alert>}
+              {statusMessage && <Alert severity={statusMessage.startsWith('Status updated') || statusMessage === 'Home task sent.' || statusMessage === 'Home task deadline updated.' || statusMessage === 'Candidate rejected.' ? 'success' : 'error'} sx={{ mt: 2 }}>{statusMessage}</Alert>}
             </CardContent></Card>
           </Grid>
 

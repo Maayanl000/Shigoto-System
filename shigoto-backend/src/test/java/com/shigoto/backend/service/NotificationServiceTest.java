@@ -60,6 +60,26 @@ class NotificationServiceTest {
         verifyNoInteractions(users, applications, interviews);
     }
 
+    @Test void homeTaskUpdatePersistsSafeDeadlineWording() {
+        User candidate = User.builder().id(3L).role(Role.CANDIDATE).build();
+        Application application = Application.builder().id(7L).candidate(candidate)
+                .job(Job.builder().title("Backend Developer").build())
+                .taskDeadline(LocalDateTime.of(2026, 9, 8, 17, 0))
+                .hrNotes("PRIVATE_HR").taskReviewNotes("PRIVATE_REVIEW").build();
+        when(users.findById(3L)).thenReturn(Optional.of(candidate));
+        when(applications.findById(7L)).thenReturn(Optional.of(application));
+
+        service.receive(CandidateNotificationEvent.of(NotificationType.HOME_TASK_UPDATED, 3L, 7L, null));
+
+        ArgumentCaptor<Notification> saved = ArgumentCaptor.forClass(Notification.class);
+        verify(notifications).saveAndFlush(saved.capture());
+        assertEquals("Home task deadline updated", saved.getValue().getTitle());
+        assertTrue(saved.getValue().getMessage().contains("Backend Developer"));
+        assertTrue(saved.getValue().getMessage().contains("2026-09-08T17:00"));
+        assertFalse(saved.getValue().getMessage().contains("PRIVATE_HR"));
+        assertFalse(saved.getValue().getMessage().contains("PRIVATE_REVIEW"));
+    }
+
     @Test void mineIsNewestFirstAndReadIsRecipientScopedAndIdempotent() {
         User candidate = User.builder().id(3L).role(Role.CANDIDATE).build();
         Notification newest = notification(2L, candidate, LocalDateTime.now());

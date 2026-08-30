@@ -704,6 +704,73 @@ class ApplicationServiceTest {
         verify(applicationRepository, never()).save(any());
     }
 
+    @Test
+    void hrUpdatesAssignedTaskDeadlineWithoutChangingWorkflowOrTaskData() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        LocalDateTime statusChangedAt = LocalDateTime.now().minusDays(1);
+        application.setStatus(ApplicationStatus.TASK_SENT);
+        application.setStatusChangedAt(statusChangedAt);
+        application.setTaskInstructions("Build the existing API");
+        application.setTaskRepoUrl("https://github.com/candidate/existing");
+        application.setTaskReviewNotes("PRIVATE_REVIEW");
+        LocalDateTime updatedDeadline = LocalDateTime.now().plusDays(4);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
+
+        HrApplicationDetailsDTO details = applicationService.updateHomeTaskDeadline(
+                1L, updatedDeadline, hr);
+
+        assertEquals(updatedDeadline, details.taskDeadline());
+        assertEquals(ApplicationStatus.TASK_SENT, application.getStatus());
+        assertEquals(statusChangedAt, application.getStatusChangedAt());
+        assertEquals("Build the existing API", application.getTaskInstructions());
+        assertEquals("https://github.com/candidate/existing", application.getTaskRepoUrl());
+        assertEquals("PRIVATE_REVIEW", application.getTaskReviewNotes());
+        var event = org.mockito.ArgumentCaptor.forClass(
+                com.shigoto.backend.messaging.CandidateNotificationEvent.class);
+        verify(notificationEventPublisher).publishAfterCommit(event.capture());
+        assertEquals(com.shigoto.backend.entity.NotificationType.HOME_TASK_UPDATED,
+                event.getValue().type());
+    }
+
+    @Test
+    void deadlineUpdateRejectsInvalidDeadlineAndPostSubmissionStatuses() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        application.setStatus(ApplicationStatus.TASK_SENT);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> applicationService.updateHomeTaskDeadline(1L, null, hr));
+        assertThrows(IllegalArgumentException.class,
+                () -> applicationService.updateHomeTaskDeadline(1L, LocalDateTime.now().minusMinutes(1), hr));
+        assertThrows(IllegalArgumentException.class,
+                () -> applicationService.updateHomeTaskDeadline(1L, LocalDateTime.now(), hr));
+        for (ApplicationStatus status : List.of(ApplicationStatus.TASK_SUBMITTED,
+                ApplicationStatus.TASK_APPROVED, ApplicationStatus.TECH_INTERVIEW_SCHEDULED)) {
+            application.setStatus(status);
+            assertThrows(IllegalArgumentException.class, () -> applicationService.updateHomeTaskDeadline(
+                    1L, LocalDateTime.now().plusDays(2), hr));
+        }
+        verify(applicationRepository, never()).save(any());
+        verify(notificationEventPublisher, never()).publishAfterCommit(any());
+    }
+
+    @Test
+    void deadlineUpdatePreservesHrRoleAndCompanyScoping() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.empty());
+        assertThrows(ResourceNotFoundException.class, () -> applicationService.updateHomeTaskDeadline(
+                1L, LocalDateTime.now().plusDays(2), hr));
+        assertThrows(AccessDeniedException.class, () -> applicationService.updateHomeTaskDeadline(
+                1L, LocalDateTime.now().plusDays(2), User.builder().role(Role.CANDIDATE).build()));
+        verify(applicationRepository, never()).save(any());
+    }
+
     private Application assignedApplication(LocalDateTime deadline) {
         Company company = Company.builder().name("Example Company").build();
         Job job = Job.builder().id(2L).title("Developer").company(company).location("Remote").build();

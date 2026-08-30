@@ -439,6 +439,10 @@ class StaffEndpointSecurityTest {
                         .with(user("candidate").roles("CANDIDATE")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"deadline\":\"2026-12-01T12:00:00\"}"))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/hr/applications/1/home-task/deadline")
+                        .with(user("candidate").roles("CANDIDATE")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"deadline\":\"2026-12-01T12:00:00\"}"))
+                .andExpect(status().isForbidden());
     }
 
     @Test

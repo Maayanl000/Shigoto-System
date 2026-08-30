@@ -2,6 +2,7 @@ package com.shigoto.backend.controller;
 
 import com.shigoto.backend.dto.HrApplicationDetailsDTO;
 import com.shigoto.backend.dto.HomeTaskAssignmentRequestDTO;
+import com.shigoto.backend.dto.HomeTaskDeadlineUpdateRequestDTO;
 import com.shigoto.backend.dto.HrApplicationStatusUpdateRequestDTO;
 import com.shigoto.backend.dto.HrNotesUpdateRequestDTO;
 import com.shigoto.backend.dto.HrCandidateFeedbackRequestDTO;
@@ -103,5 +104,17 @@ public class HrApplicationController {
         User hr = authService.getAuthenticatedHr(authentication);
         return applicationService.assignHomeTask(
                 applicationId, request.taskInstructions(), request.deadline(), hr);
+    }
+
+    @PutMapping("/{applicationId}/home-task/deadline")
+    public HrApplicationDetailsDTO updateHomeTaskDeadline(
+            @PathVariable Long applicationId,
+            @RequestBody HomeTaskDeadlineUpdateRequestDTO request,
+            Authentication authentication) {
+        if (request == null) {
+            throw new IllegalArgumentException("Home task deadline request is required");
+        }
+        User hr = authService.getAuthenticatedHr(authentication);
+        return applicationService.updateHomeTaskDeadline(applicationId, request.deadline(), hr);
     }
 }

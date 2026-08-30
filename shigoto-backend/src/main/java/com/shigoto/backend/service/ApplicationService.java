@@ -201,6 +201,22 @@ public class ApplicationService {
         return result;
     }
 
+    @Transactional
+    public HrApplicationDetailsDTO updateHomeTaskDeadline(
+            Long applicationId, LocalDateTime deadline, User hr) {
+        Application application = findHrCompanyApplication(applicationId, hr);
+        if (application.getStatus() != ApplicationStatus.TASK_SENT) {
+            throw new IllegalArgumentException("Home task deadline can be updated only before task submission");
+        }
+        if (deadline == null || !deadline.isAfter(LocalDateTime.now())) {
+            throw new IllegalArgumentException("Home task deadline must be in the future");
+        }
+        application.setTaskDeadline(deadline);
+        HrApplicationDetailsDTO result = HrApplicationDetailsDTO.from(applicationRepository.save(application));
+        publish(application, NotificationType.HOME_TASK_UPDATED);
+        return result;
+    }
+
     private boolean isAllowedHrTransition(ApplicationStatus currentStatus, ApplicationStatus targetStatus) {
         if (targetStatus == ApplicationStatus.REJECTED) {
             return currentStatus != ApplicationStatus.OFFER && currentStatus != ApplicationStatus.REJECTED;

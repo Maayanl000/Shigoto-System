@@ -50,6 +50,7 @@ public class NotificationService {
         String title = switch (event.type()) {
             case APPLICATION_REJECTED -> "Application update";
             case HOME_TASK_ASSIGNED -> "New home task";
+            case HOME_TASK_UPDATED -> "Home task deadline updated";
             case INTERVIEW_SCHEDULED -> "Interview scheduled";
             case INTERVIEW_RESCHEDULED -> "Interview rescheduled";
             case INTERVIEW_CANCELED -> "Interview canceled";
@@ -57,6 +58,9 @@ public class NotificationService {
         String message = switch (event.type()) {
             case APPLICATION_REJECTED -> "Your application for " + jobTitle + " was not selected.";
             case HOME_TASK_ASSIGNED -> "A home task was assigned for " + jobTitle + ".";
+            case HOME_TASK_UPDATED -> "The home task deadline for " + jobTitle + " was updated"
+                    + (application.getTaskDeadline() == null ? "."
+                    : " to " + application.getTaskDeadline() + ".");
             case INTERVIEW_SCHEDULED -> "An interview was scheduled for " + jobTitle + ".";
             case INTERVIEW_RESCHEDULED -> "Your interview for " + jobTitle + " was rescheduled.";
             case INTERVIEW_CANCELED -> "Your interview for " + jobTitle + " was canceled.";
