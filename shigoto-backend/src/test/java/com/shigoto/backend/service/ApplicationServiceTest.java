@@ -36,6 +36,7 @@ import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -287,6 +288,39 @@ class ApplicationServiceTest {
 
         assertThrows(AccessDeniedException.class, () -> applicationService.getAllApplications(hr));
         verify(applicationRepository, never()).findAll();
+    }
+
+    @Test
+    void hrFiltersApplicationsByJobWithinTheirCompany() {
+        Company company = Company.builder().id(10L).name("Shigoto").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = Application.builder()
+                .id(1L)
+                .candidate(User.builder().id(3L).firstName("Dana").lastName("Cohen")
+                        .role(Role.CANDIDATE).build())
+                .job(Job.builder().id(2L).title("Backend Engineer").company(company).build())
+                .status(ApplicationStatus.APPLIED)
+                .build();
+        when(applicationRepository.findByJobIdAndJobCompany(2L, company))
+                .thenReturn(List.of(application));
+
+        var applications = applicationService.getAllApplications(hr, 2L);
+
+        assertEquals(List.of(1L), applications.stream().map(response -> response.applicationId()).toList());
+        verify(applicationRepository).findByJobIdAndJobCompany(2L, company);
+        verify(applicationRepository, never()).findByJobId(any());
+    }
+
+    @Test
+    void foreignCompanyJobFilterReturnsNoApplications() {
+        Company company = Company.builder().id(10L).name("Shigoto").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        when(applicationRepository.findByJobIdAndJobCompany(99L, company)).thenReturn(List.of());
+
+        assertTrue(applicationService.getAllApplications(hr, 99L).isEmpty());
+
+        verify(applicationRepository).findByJobIdAndJobCompany(99L, company);
+        verify(applicationRepository, never()).findByJobId(any());
     }
 
     @Test

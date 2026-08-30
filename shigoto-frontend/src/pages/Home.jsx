@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Typography, Grid, Card, CardContent, CardActions, Button, Chip, Box, CircularProgress, Container, Divider, Drawer, IconButton, InputAdornment, Stack, TextField } from '@mui/material';
+import { Alert, Typography, Grid, Card, CardContent, CardActions, Button, Chip, Box, CircularProgress, Container, Divider, Drawer, FormControl, IconButton, InputAdornment, InputLabel, MenuItem, Select, Stack, TextField } from '@mui/material';
 import WorkIcon from '@mui/icons-material/Work';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded';
@@ -22,6 +22,8 @@ export default function Home() {
   const [applicationJob, setApplicationJob] = useState(null);
   const [profileCompletionJob, setProfileCompletionJob] = useState(null);
   const [applyMessage, setApplyMessage] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState('');
   const [candidateApplicationState, setCandidateApplicationState] = useState({ userId: null, applications: [] });
   const applicationsLoading = user?.role === 'CANDIDATE' && candidateApplicationState.userId !== user.id;
 
@@ -31,6 +33,22 @@ export default function Home() {
   }, [candidateApplicationState, user]);
   const selectedApplication = selectedJob ? applicationByJobId.get(String(selectedJob.id)) : null;
   const canApply = !user || user.role === 'CANDIDATE';
+  const locationOptions = useMemo(() => [...new Set(jobs
+    .map((job) => job.location?.trim())
+    .filter(Boolean))].sort((left, right) => left.localeCompare(right)), [jobs]);
+  const filteredJobs = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLocaleLowerCase();
+    const normalizedLocation = selectedLocation.toLocaleLowerCase();
+    return jobs.filter((job) => {
+      const matchesSearch = !normalizedSearch
+        || job.title?.toLocaleLowerCase().includes(normalizedSearch)
+        || job.companyName?.toLocaleLowerCase().includes(normalizedSearch);
+      const matchesLocation = !normalizedLocation
+        || job.location?.trim().toLocaleLowerCase() === normalizedLocation;
+      return matchesSearch && matchesLocation;
+    });
+  }, [jobs, searchQuery, selectedLocation]);
+  const filtersActive = Boolean(searchQuery.trim() || selectedLocation);
 
   const handleApply = () => {
     if (!user) {
@@ -158,15 +176,39 @@ export default function Home() {
 
           <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, alignItems: { md: 'center' }, gap: 1.5, p: 2, mb: 3, border: 1, borderColor: 'divider', borderRadius: 2, bgcolor: 'background.paper', boxShadow: '0 4px 16px rgba(16,35,61,0.05)' }}>
             <TextField
+              size="small"
               label="Search roles"
-              placeholder="Job title or department"
-              disabled
+              placeholder="Job title or company"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
               fullWidth
+              sx={{ flex: { md: '1 1 auto' } }}
               slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchRoundedIcon fontSize="small" /></InputAdornment> } }}
             />
-            <TextField label="Location" placeholder="All locations" disabled sx={{ minWidth: { md: 220 } }} />
-            <Button variant="outlined" disabled sx={{ minWidth: { md: 120 } }}>Filters</Button>
-            <Typography variant="caption" color="text.secondary" sx={{ minWidth: { md: 150 }, textAlign: { md: 'right' } }}>Search controls are a UI preview.</Typography>
+            <FormControl size="small" sx={{ width: { xs: '100%', md: 240 }, flexShrink: 0 }}>
+              <InputLabel id="public-job-location-label">Location</InputLabel>
+              <Select
+                labelId="public-job-location-label"
+                label="Location"
+                value={selectedLocation}
+                onChange={(event) => setSelectedLocation(event.target.value)}
+              >
+                <MenuItem value="">All locations</MenuItem>
+                {locationOptions.map((location) => <MenuItem key={location} value={location}>{location}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={!filtersActive}
+              onClick={() => { setSearchQuery(''); setSelectedLocation(''); }}
+              sx={{ width: { xs: '100%', md: 'auto' }, minWidth: { md: 96 }, height: 40, flexShrink: 0 }}
+            >
+              Clear
+            </Button>
+            <Typography variant="caption" color="text.secondary" sx={{ minWidth: { md: 150 }, textAlign: { md: 'right' } }}>
+              {filteredJobs.length} of {jobs.length} roles
+            </Typography>
           </Box>
 
           {loading ? (
@@ -179,9 +221,15 @@ export default function Home() {
               <Typography variant="h6">No open roles right now</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Please check again as new technology opportunities are added.</Typography>
             </Box>
+          ) : filteredJobs.length === 0 ? (
+            <Box sx={{ py: 8, textAlign: 'center', border: 1, borderStyle: 'dashed', borderColor: 'divider', borderRadius: 2, bgcolor: 'background.paper' }}>
+              <SearchRoundedIcon color="disabled" sx={{ fontSize: 40, mb: 1 }} />
+              <Typography variant="h6">No roles match your filters.</Typography>
+              <Button variant="text" onClick={() => { setSearchQuery(''); setSelectedLocation(''); }} sx={{ mt: 1 }}>Clear filters</Button>
+            </Box>
           ) : (
             <Grid container spacing={2.5}>
-              {jobs.map((job) => {
+              {filteredJobs.map((job) => {
                 const existingApplication = applicationByJobId.get(String(job.id));
                 return (
                 <Grid size={{ xs: 12, md: 6, lg: 4 }} key={job.id}>

@@ -93,8 +93,16 @@ public class ApplicationService {
 
     @Transactional(readOnly = true)
     public List<HrApplicationSummaryDTO> getAllApplications(User hr) {
+        return getAllApplications(hr, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<HrApplicationSummaryDTO> getAllApplications(User hr, Long jobId) {
         requireHrWithCompany(hr);
-        return applicationRepository.findByJobCompany(hr.getCompany())
+        List<Application> applications = jobId == null
+                ? applicationRepository.findByJobCompany(hr.getCompany())
+                : applicationRepository.findByJobIdAndJobCompany(jobId, hr.getCompany());
+        return applications
                 .stream()
                 .map(application -> HrApplicationSummaryDTO.from(application,
                         interviewRepository.findFirstByApplicationIdAndStatusOrderByScheduledAtDesc(

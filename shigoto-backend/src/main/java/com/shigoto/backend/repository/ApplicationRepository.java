@@ -20,6 +20,8 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
 
     List<Application> findByJobCompany(Company company);
 
+    List<Application> findByJobIdAndJobCompany(Long jobId, Company company);
+
     Optional<Application> findByIdAndJobCompany(Long id, Company company);
 
     List<Application> findByStatusAndJobCompanyOrderByAppliedAtAsc(

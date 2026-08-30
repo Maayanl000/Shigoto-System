@@ -114,6 +114,9 @@ class StaffEndpointSecurityTest {
     void candidateCannotUseStaffApplicationEndpoints() throws Exception {
         mockMvc.perform(get("/api/applications").with(user("candidate").roles("CANDIDATE")))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/applications").param("jobId", "3")
+                        .with(user("candidate").roles("CANDIDATE")))
+                .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/applications/candidate/2").with(user("candidate").roles("CANDIDATE")))
                 .andExpect(status().isForbidden());
         mockMvc.perform(put("/api/applications/1")
@@ -170,11 +173,35 @@ class StaffEndpointSecurityTest {
         User hr = User.builder().id(1L).email("hr@example.com").role(Role.HR)
                 .company(com.shigoto.backend.entity.Company.builder().id(1L).name("Shigoto").build()).build();
         when(authService.getAuthenticatedHr(any())).thenReturn(hr);
-        when(applicationService.getAllApplications(hr)).thenReturn(List.of());
+        when(applicationService.getAllApplications(hr, null)).thenReturn(List.of());
 
         mockMvc.perform(get("/api/applications").with(user("hr").roles("HR")))
                 .andExpect(status().isOk())
                 .andExpect(content().json("[]"));
+
+        verify(applicationService).getAllApplications(hr, null);
+    }
+
+    @Test
+    void hrCanFilterApplicationsByJobId() throws Exception {
+        User hr = User.builder().id(1L).email("hr@example.com").role(Role.HR)
+                .company(com.shigoto.backend.entity.Company.builder().id(1L).name("Shigoto").build()).build();
+        when(authService.getAuthenticatedHr(any())).thenReturn(hr);
+        when(applicationService.getAllApplications(hr, 3L)).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/applications").param("jobId", "3")
+                        .with(user("hr").roles("HR")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("[]"));
+
+        verify(applicationService).getAllApplications(hr, 3L);
+    }
+
+    @Test
+    void invalidApplicationJobIdReturnsBadRequest() throws Exception {
+        mockMvc.perform(get("/api/applications").param("jobId", "not-a-number")
+                        .with(user("hr").roles("HR")))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

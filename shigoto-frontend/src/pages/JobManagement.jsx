@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress, FormControl,
   Grid, InputLabel, MenuItem, Select, Stack, TextField, Typography,
@@ -27,6 +27,7 @@ export default function JobManagement() {
   const [error, setError] = useState('');
   const [dialog, setDialog] = useState(null);
   const [selectedJob, setSelectedJob] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('ALL');
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
@@ -117,14 +118,18 @@ export default function JobManagement() {
     ...result,
     [job.status]: (result[job.status] || 0) + 1,
   }), {});
+  const filteredJobs = useMemo(() => statusFilter === 'ALL'
+    ? jobs
+    : jobs.filter((job) => job.status === statusFilter), [jobs, statusFilter]);
 
   return (
     <PageSkeleton title="Job Management" description="Create and maintain technology openings and their hiring teams.">
       <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} spacing={2} sx={{ mb: 2.5 }}>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-          <Chip label={`${counts.OPEN || 0} open`} color="secondary" variant="outlined" />
-          <Chip label={`${counts.PAUSED || 0} paused`} color="warning" variant="outlined" />
-          <Chip label={`${counts.CLOSED || 0} closed`} variant="outlined" />
+          <Chip label={`${jobs.length} all`} onClick={() => setStatusFilter('ALL')} color="primary" variant={statusFilter === 'ALL' ? 'filled' : 'outlined'} />
+          <Chip label={`${counts.OPEN || 0} open`} onClick={() => setStatusFilter('OPEN')} color="secondary" variant={statusFilter === 'OPEN' ? 'filled' : 'outlined'} />
+          <Chip label={`${counts.PAUSED || 0} paused`} onClick={() => setStatusFilter('PAUSED')} color="warning" variant={statusFilter === 'PAUSED' ? 'filled' : 'outlined'} />
+          <Chip label={`${counts.CLOSED || 0} closed`} onClick={() => setStatusFilter('CLOSED')} variant={statusFilter === 'CLOSED' ? 'filled' : 'outlined'} />
         </Stack>
         <Button variant="contained" startIcon={<AddRoundedIcon />} onClick={openCreate}>Create job</Button>
       </Stack>
@@ -138,9 +143,17 @@ export default function JobManagement() {
         </Box>
       )}
 
-      {!loading && !error && jobs.length > 0 && (
+      {!loading && !error && jobs.length > 0 && filteredJobs.length === 0 && (
+        <Box sx={{ py: 8, textAlign: 'center' }}>
+          <Typography variant="h6">No {statusFilter.toLowerCase()} jobs</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Choose another status or return to All.</Typography>
+          <Button variant="text" onClick={() => setStatusFilter('ALL')} sx={{ mt: 1 }}>Show all jobs</Button>
+        </Box>
+      )}
+
+      {!loading && !error && filteredJobs.length > 0 && (
         <Grid container spacing={2}>
-          {jobs.map((job) => (
+          {filteredJobs.map((job) => (
             <Grid key={job.id} size={{ xs: 12, lg: 4 }}>
               <Card sx={{ height: '100%' }}>
                 <CardContent>
