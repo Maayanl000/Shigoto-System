@@ -26,4 +26,6 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
             ApplicationStatus status, Company company);
 
     boolean existsByCandidateIdAndJobId(Long candidateId, Long jobId);
+
+    Optional<Application> findByCandidateIdAndJobId(Long candidateId, Long jobId);
 }

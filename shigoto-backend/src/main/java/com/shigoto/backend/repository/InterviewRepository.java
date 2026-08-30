@@ -18,6 +18,9 @@ public interface InterviewRepository extends JpaRepository<Interview, Long> {
     Optional<Interview> findFirstByApplicationIdAndStatusOrderByScheduledAtDesc(
             Long applicationId, InterviewStatus status);
 
+    Optional<Interview> findFirstByApplicationIdAndTypeOrderByIdAsc(
+            Long applicationId, InterviewType type);
+
     List<Interview> findByApplicationCandidateIdOrderByScheduledAtAsc(Long candidateId);
 
     List<Interview> findByInterviewerIdOrderByScheduledAtAsc(Long interviewerId);

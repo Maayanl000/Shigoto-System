@@ -30,4 +30,20 @@ class ApplicationStatusTimestampTest {
         application.setCandidateFeedback("Unrelated feedback edit");
         assertEquals(changed, application.getStatusChangedAt());
     }
+
+    @Test void preservesExplicitDemoTimestampsOnCreation() {
+        LocalDateTime appliedAt = LocalDateTime.of(2026, 8, 10, 9, 0);
+        LocalDateTime statusChangedAt = LocalDateTime.of(2026, 8, 12, 14, 0);
+        Application application = Application.builder()
+                .status(ApplicationStatus.HR_INTERVIEW)
+                .appliedAt(appliedAt)
+                .statusChangedAt(statusChangedAt)
+                .build();
+
+        application.onCreate();
+
+        assertEquals(appliedAt, application.getAppliedAt());
+        assertEquals(statusChangedAt, application.getStatusChangedAt());
+        assertEquals(ApplicationStatus.HR_INTERVIEW, application.getStatus());
+    }
 }

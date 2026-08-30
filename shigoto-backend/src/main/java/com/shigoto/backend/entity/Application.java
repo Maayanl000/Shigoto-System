@@ -66,8 +66,12 @@ public class Application {
     @PrePersist
     protected void onCreate() {
         LocalDateTime createdAt = LocalDateTime.now();
-        this.appliedAt = createdAt;
-        this.statusChangedAt = createdAt;
+        if (this.appliedAt == null) {
+            this.appliedAt = createdAt;
+        }
+        if (this.statusChangedAt == null) {
+            this.statusChangedAt = this.appliedAt;
+        }
         if (this.status == null) {
             this.status = ApplicationStatus.APPLIED; // סטטוס ברירת מחדל
         }

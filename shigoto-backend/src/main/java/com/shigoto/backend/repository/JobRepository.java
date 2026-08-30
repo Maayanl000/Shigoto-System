@@ -18,4 +18,6 @@ public interface JobRepository extends JpaRepository<Job, Long> {
     List<Job> findByCompanyOrderByCreatedAtDesc(Company company);
 
     Optional<Job> findByIdAndCompany(Long id, Company company);
+
+    Optional<Job> findByCompanyAndTitle(Company company, String title);
 }
