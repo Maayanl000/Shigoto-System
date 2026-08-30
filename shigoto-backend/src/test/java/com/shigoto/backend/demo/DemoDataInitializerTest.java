@@ -97,7 +97,7 @@ class DemoDataInitializerTest {
         initializer.run();
 
         assertEquals(3, companies.size());
-        assertEquals(12, users.size());
+        assertEquals(14, users.size());
         assertEquals(5, jobs.size());
         assertEquals(8, applications.size());
         assertEquals(2, interviews.size());
@@ -105,12 +105,29 @@ class DemoDataInitializerTest {
         assertEquals(Role.HR, users.get("rachel.green@nvidia.demo").getRole());
         assertEquals("NVIDIA", users.get("rachel.green@nvidia.demo").getCompany().getName());
         assertEquals(Role.HR, users.get("monica.geller@nvidia.demo").getRole());
+        assertEquals(Role.INTERVIEWER, users.get("gunther@nvidia.demo").getRole());
+        assertEquals("Gunther", users.get("gunther@nvidia.demo").getFirstName());
+        assertEquals("", users.get("gunther@nvidia.demo").getLastName());
+        assertEquals("NVIDIA", users.get("gunther@nvidia.demo").getCompany().getName());
+        assertEquals("encoded-demo-password", users.get("gunther@nvidia.demo").getPassword());
+        assertEquals(Role.INTERVIEWER, users.get("mike.hannigan@nvidia.demo").getRole());
+        assertEquals("Mike", users.get("mike.hannigan@nvidia.demo").getFirstName());
+        assertEquals("Hannigan", users.get("mike.hannigan@nvidia.demo").getLastName());
+        assertEquals("NVIDIA", users.get("mike.hannigan@nvidia.demo").getCompany().getName());
+        assertEquals("encoded-demo-password", users.get("mike.hannigan@nvidia.demo").getPassword());
         assertEquals(Role.INTERVIEWER, users.get("chandler.bing@microsoft.demo").getRole());
         assertEquals(Role.INTERVIEWER, users.get("joey.tribbiani@microsoft.demo").getRole());
         assertEquals(Role.HR, users.get("janice.litman@microsoft.demo").getRole());
         assertEquals(Role.HR, users.get("ross.geller@google.demo").getRole());
         assertEquals(Role.INTERVIEWER, users.get("phoebe.buffay@google.demo").getRole());
         assertNull(users.get("eren.yeager@candidate.demo").getCompany());
+        assertEquals(2, countUsers(Role.HR, "NVIDIA"));
+        assertEquals(2, countUsers(Role.INTERVIEWER, "NVIDIA"));
+        assertEquals(1, countUsers(Role.HR, "Microsoft"));
+        assertEquals(2, countUsers(Role.INTERVIEWER, "Microsoft"));
+        assertEquals(1, countUsers(Role.HR, "Google"));
+        assertEquals(1, countUsers(Role.INTERVIEWER, "Google"));
+        assertEquals(5, users.values().stream().filter(user -> user.getRole() == Role.CANDIDATE).count());
 
         assertTrue(applications.values().stream()
                 .map(Application::getStatus)
@@ -153,7 +170,8 @@ class DemoDataInitializerTest {
         assertTrue(manager.getScheduledAt().isAfter(technical.getScheduledAt()));
 
         verify(companyRepository, times(3)).save(any(Company.class));
-        verify(userRepository, times(12)).save(any(User.class));
+        verify(userRepository, times(14)).save(any(User.class));
+        verify(passwordEncoder, times(14)).encode(DemoDataInitializer.DEMO_PASSWORD);
         verify(jobRepository, times(5)).save(any(Job.class));
         verify(applicationRepository, times(8)).save(any(Application.class));
         verify(interviewRepository, times(2)).save(any(Interview.class));
@@ -170,6 +188,14 @@ class DemoDataInitializerTest {
         Map<String, LocalDateTime> timestamps = new LinkedHashMap<>();
         interviews.forEach((key, interview) -> timestamps.put(key, interview.getScheduledAt()));
         return timestamps;
+    }
+
+    private long countUsers(Role role, String companyName) {
+        return users.values().stream()
+                .filter(user -> user.getRole() == role)
+                .filter(user -> user.getCompany() != null)
+                .filter(user -> companyName.equals(user.getCompany().getName()))
+                .count();
     }
 
     private void configureCompanyRepository() {

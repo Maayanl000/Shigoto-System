@@ -52,6 +52,9 @@ public class DemoDataInitializer implements CommandLineRunner {
 
         findOrCreateUser("Rachel", "Green", "rachel.green@nvidia.demo", Role.HR, nvidia);
         findOrCreateUser("Monica", "Geller", "monica.geller@nvidia.demo", Role.HR, nvidia);
+        findOrCreateUser("Gunther", "", "gunther@nvidia.demo", Role.INTERVIEWER, nvidia);
+        findOrCreateUser(
+                "Mike", "Hannigan", "mike.hannigan@nvidia.demo", Role.INTERVIEWER, nvidia);
         User chandler = findOrCreateUser(
                 "Chandler", "Bing", "chandler.bing@microsoft.demo", Role.INTERVIEWER, microsoft);
         User joey = findOrCreateUser(
