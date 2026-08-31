@@ -56,8 +56,10 @@ public class ApplicationController {
 
     @GetMapping("/candidate/{candidateId}")
     public ResponseEntity<List<StaffApplicationResponseDTO>> getApplicationsByCandidate(
-            @PathVariable Long candidateId) {
-        return ResponseEntity.ok(applicationService.getApplicationsByCandidate(candidateId));
+            @PathVariable Long candidateId,
+            Authentication authentication) {
+        User hr = authService.getAuthenticatedHr(authentication);
+        return ResponseEntity.ok(applicationService.getApplicationsByCandidate(candidateId, hr));
     }
 
     @GetMapping("/{applicationId}")
@@ -98,8 +100,11 @@ public class ApplicationController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteApplication(@PathVariable Long id) {
-        applicationService.deleteApplication(id);
+    public ResponseEntity<Void> deleteApplication(
+            @PathVariable Long id,
+            Authentication authentication) {
+        User hr = authService.getAuthenticatedHr(authentication);
+        applicationService.deleteApplication(id, hr);
         return ResponseEntity.noContent().build();
     }
 }

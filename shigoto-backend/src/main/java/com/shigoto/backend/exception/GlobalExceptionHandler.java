@@ -54,6 +54,12 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(STALE_WRITE_MESSAGE, HttpStatus.CONFLICT);
     }
 
+    @ExceptionHandler(InterviewSlotConflictException.class)
+    public ResponseEntity<ErrorResponseDTO> handleInterviewSlotConflict(
+            InterviewSlotConflictException ex) {
+        return buildErrorResponse(ex.getMessage(), HttpStatus.CONFLICT);
+    }
+
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ErrorResponseDTO> handleAuthentication(AuthenticationException ex) {
         return buildErrorResponse("Invalid email or password", HttpStatus.UNAUTHORIZED);

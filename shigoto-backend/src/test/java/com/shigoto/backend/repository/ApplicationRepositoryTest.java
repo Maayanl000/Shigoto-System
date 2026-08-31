@@ -48,12 +48,15 @@ class ApplicationRepositoryTest {
                 values (?, ?, ?, ?, ?, ?, ?)
                 """, candidateId, "Test", "Candidate", "candidate-" + idBase + "@example.com",
                 "encoded-password", "CANDIDATE", false);
-        insert("insert into applications (id, candidate_id, job_id, status, version) values (?, ?, ?, ?, ?)",
-                applicationAId, candidateId, jobAId, "APPLIED", 0L);
-        insert("insert into applications (id, candidate_id, job_id, status, version) values (?, ?, ?, ?, ?)",
-                applicationBId, candidateId, jobBId, "APPLIED", 0L);
-        insert("insert into applications (id, candidate_id, job_id, status, version) values (?, ?, ?, ?, ?)",
-                secondApplicationAId, candidateId, secondJobAId, "APPLIED", 0L);
+        insert("insert into applications (id, candidate_id, job_id, status, version, hr_notes) "
+                        + "values (?, ?, ?, ?, ?, ?)",
+                applicationAId, candidateId, jobAId, "APPLIED", 0L, "COMPANY_A_PRIVATE");
+        insert("insert into applications (id, candidate_id, job_id, status, version, hr_notes) "
+                        + "values (?, ?, ?, ?, ?, ?)",
+                applicationBId, candidateId, jobBId, "APPLIED", 0L, "COMPANY_B_PRIVATE");
+        insert("insert into applications (id, candidate_id, job_id, status, version, hr_notes) "
+                        + "values (?, ?, ?, ?, ?, ?)",
+                secondApplicationAId, candidateId, secondJobAId, "APPLIED", 0L, "COMPANY_A_SECOND_PRIVATE");
         entityManager.clear();
 
         Company companyA = entityManager.find(Company.class, companyAId);
@@ -64,6 +67,10 @@ class ApplicationRepositoryTest {
         var results = applicationRepository.findByJobCompany(companyA);
         var jobResults = applicationRepository.findByJobIdAndJobCompany(jobAId, companyA);
         var foreignJobResults = applicationRepository.findByJobIdAndJobCompany(jobBId, companyA);
+        var candidateCompanyResults =
+                applicationRepository.findByCandidateIdAndJobCompanyOrderByAppliedAtDesc(candidateId, companyA);
+        var ownApplicationById = applicationRepository.findByIdAndJobCompany(applicationAId, companyA);
+        var foreignApplicationById = applicationRepository.findByIdAndJobCompany(applicationBId, companyA);
 
         assertTrue(results.stream().anyMatch(application -> application.getId().equals(applicationA.getId())));
         assertTrue(results.stream().anyMatch(application -> application.getId().equals(secondApplicationA.getId())));
@@ -72,6 +79,16 @@ class ApplicationRepositoryTest {
         assertFalse(jobResults.stream().anyMatch(application -> application.getId().equals(secondApplicationA.getId())));
         assertFalse(jobResults.stream().anyMatch(application -> application.getId().equals(applicationB.getId())));
         assertTrue(foreignJobResults.isEmpty());
+        assertTrue(candidateCompanyResults.stream()
+                .anyMatch(application -> application.getId().equals(applicationA.getId())));
+        assertTrue(candidateCompanyResults.stream()
+                .anyMatch(application -> application.getId().equals(secondApplicationA.getId())));
+        assertFalse(candidateCompanyResults.stream()
+                .anyMatch(application -> application.getId().equals(applicationB.getId())));
+        assertFalse(candidateCompanyResults.stream()
+                .anyMatch(application -> "COMPANY_B_PRIVATE".equals(application.getHrNotes())));
+        assertTrue(ownApplicationById.isPresent());
+        assertTrue(foreignApplicationById.isEmpty());
     }
 
     private void insert(String sql, Object... parameters) {

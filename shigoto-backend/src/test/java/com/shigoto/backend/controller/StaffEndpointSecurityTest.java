@@ -6,11 +6,13 @@ import com.shigoto.backend.dto.HrApplicationDetailsDTO;
 import com.shigoto.backend.dto.HrInterviewerOptionDTO;
 import com.shigoto.backend.dto.CandidateInterviewResponseDTO;
 import com.shigoto.backend.dto.NotificationResponseDTO;
+import com.shigoto.backend.dto.StaffApplicationResponseDTO;
 import com.shigoto.backend.entity.ApplicationStatus;
 import com.shigoto.backend.entity.InterviewStatus;
 import com.shigoto.backend.entity.InterviewType;
 import com.shigoto.backend.entity.Role;
 import com.shigoto.backend.entity.User;
+import com.shigoto.backend.exception.InterviewSlotConflictException;
 import com.shigoto.backend.repository.UserRepository;
 import com.shigoto.backend.repository.JobRepository;
 import com.shigoto.backend.repository.CompanyRepository;
@@ -133,6 +135,27 @@ class StaffEndpointSecurityTest {
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/hr/applications/1/cv").with(user("candidate").roles("CANDIDATE")))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void hrCandidateHistoryAndDeletionUseAuthenticatedHr() throws Exception {
+        var company = com.shigoto.backend.entity.Company.builder().id(1L).name("Shigoto").build();
+        User hr = User.builder().id(1L).email("hr@example.com").role(Role.HR).company(company).build();
+        StaffApplicationResponseDTO history = new StaffApplicationResponseDTO(
+                7L, 2L, 3L, ApplicationStatus.APPLIED, "Own company notes");
+        when(authService.getAuthenticatedHr(any())).thenReturn(hr);
+        when(applicationService.getApplicationsByCandidate(2L, hr)).thenReturn(List.of(history));
+
+        mockMvc.perform(get("/api/applications/candidate/2").with(user("hr").roles("HR")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(7))
+                .andExpect(jsonPath("$[0].hrNotes").value("Own company notes"));
+        mockMvc.perform(delete("/api/applications/7")
+                        .with(user("hr").roles("HR")).with(csrf()))
+                .andExpect(status().isNoContent());
+
+        verify(applicationService).getApplicationsByCandidate(2L, hr);
+        verify(applicationService).deleteApplication(7L, hr);
     }
 
     @Test
@@ -298,6 +321,33 @@ class StaffEndpointSecurityTest {
                 .andExpect(jsonPath("$[0].fullName").value("Dana Levi"))
                 .andExpect(jsonPath("$[0].password").doesNotExist())
                 .andExpect(jsonPath("$[0].company").doesNotExist());
+    }
+
+    @Test
+    void concurrentInterviewSlotConflictReturnsSafeConflictResponse() throws Exception {
+        var company = com.shigoto.backend.entity.Company.builder().id(1L).name("Wix").build();
+        User hr = User.builder().id(1L).role(Role.HR).company(company).build();
+        when(authService.getAuthenticatedHr(any())).thenReturn(hr);
+        when(interviewService.scheduleInterview(
+                org.mockito.ArgumentMatchers.eq(7L), any(), org.mockito.ArgumentMatchers.same(hr)))
+                .thenThrow(new InterviewSlotConflictException(
+                        "Interviewer is no longer available at the selected time", null));
+
+        mockMvc.perform(post("/api/hr/applications/7/interviews")
+                        .with(user("hr").roles("HR")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "interviewerId": 5,
+                                  "type": "TECHNICAL",
+                                  "scheduledAt": "2026-12-01T12:00:00",
+                                  "meetingLink": "https://meet.example.com/interview"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.message")
+                        .value("Interviewer is no longer available at the selected time"));
     }
 
     @Test

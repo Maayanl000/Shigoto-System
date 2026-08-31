@@ -9,6 +9,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.web.authentication.session.ChangeSessionIdAuthenticationStrategy;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 
 import java.util.List;
@@ -22,7 +23,8 @@ class AuthControllerTest {
     @Test
     void successfulLoginStoresSecurityContextInHttpSession() {
         AuthService authService = mock(AuthService.class);
-        AuthController controller = new AuthController(authService);
+        AuthController controller = new AuthController(
+                authService, new ChangeSessionIdAuthenticationStrategy());
         LoginRequestDTO request = new LoginRequestDTO("candidate@example.com", "secret123");
         Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
                 "candidate@example.com", null, List.of());

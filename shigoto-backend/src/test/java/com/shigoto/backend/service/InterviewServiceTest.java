@@ -13,6 +13,7 @@ import com.shigoto.backend.entity.Job;
 import com.shigoto.backend.entity.NotificationType;
 import com.shigoto.backend.entity.Role;
 import com.shigoto.backend.entity.User;
+import com.shigoto.backend.exception.InterviewSlotConflictException;
 import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.ApplicationRepository;
 import com.shigoto.backend.repository.InterviewRepository;
@@ -20,6 +21,9 @@ import com.shigoto.backend.repository.UserRepository;
 import com.shigoto.backend.messaging.NotificationEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.postgresql.util.PSQLException;
+import org.postgresql.util.ServerErrorMessage;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.time.LocalDateTime;
@@ -87,7 +91,7 @@ class InterviewServiceTest {
         application.setTaskRepoUrl("https://github.com/candidate/task");
         HrInterviewScheduleRequestDTO request = validRequest(5L, InterviewType.TECHNICAL);
         stubScopedEntities(company, application, interviewer, request);
-        when(interviewRepository.save(any())).thenAnswer(invocation -> {
+        when(interviewRepository.saveAndFlush(any())).thenAnswer(invocation -> {
             Interview interview = invocation.getArgument(0);
             interview.setId(9L);
             return interview;
@@ -99,7 +103,7 @@ class InterviewServiceTest {
         assertEquals(ApplicationStatus.TECH_INTERVIEW_SCHEDULED, response.applicationStatus());
         assertEquals(InterviewStatus.SCHEDULED, response.status());
         verify(applicationRepository).save(application);
-        verify(interviewRepository).save(any(Interview.class));
+        verify(interviewRepository).saveAndFlush(any(Interview.class));
     }
 
     @Test
@@ -110,7 +114,7 @@ class InterviewServiceTest {
         Application application = application(company, ApplicationStatus.HR_INTERVIEW);
         HrInterviewScheduleRequestDTO request = validRequest(5L, InterviewType.TECHNICAL);
         stubScopedEntities(company, application, interviewer, request);
-        when(interviewRepository.save(any())).thenAnswer(invocation -> {
+        when(interviewRepository.saveAndFlush(any())).thenAnswer(invocation -> {
             Interview interview = invocation.getArgument(0);
             interview.setId(9L);
             return interview;
@@ -227,7 +231,7 @@ class InterviewServiceTest {
         LocalDateTime newTime = LocalDateTime.now().plusDays(3);
         when(interviewRepository.findByIdAndApplicationJobCompany(9L, company)).thenReturn(Optional.of(interview));
         when(userRepository.findByIdAndCompany(6L, company)).thenReturn(Optional.of(replacement));
-        when(interviewRepository.save(interview)).thenReturn(interview);
+        when(interviewRepository.saveAndFlush(interview)).thenReturn(interview);
 
         var response = interviewService.rescheduleInterview(9L,
                 new HrInterviewRescheduleRequestDTO(6L, newTime, " https://meet.example.com/new "), hr(company));
@@ -235,7 +239,34 @@ class InterviewServiceTest {
         assertEquals(6L, response.interviewerId());
         assertEquals(newTime, response.scheduledAt());
         assertEquals("https://meet.example.com/new", response.meetingLink());
-        verify(interviewRepository).save(interview);
+        verify(interviewRepository).saveAndFlush(interview);
+    }
+
+    @Test
+    void databaseSlotConflictIsMappedWithoutMaskingOtherIntegrityFailures() {
+        Company company = company(1L, "Wix");
+        User interviewer = interviewer(5L, company);
+        Application application = application(company, ApplicationStatus.HR_INTERVIEW);
+        HrInterviewScheduleRequestDTO request = validRequest(5L, InterviewType.TECHNICAL);
+        stubScopedEntities(company, application, interviewer, request);
+        PSQLException postgresFailure = mock(PSQLException.class);
+        ServerErrorMessage serverError = mock(ServerErrorMessage.class);
+        when(postgresFailure.getServerErrorMessage()).thenReturn(serverError);
+        when(serverError.getConstraint()).thenReturn(InterviewService.ACTIVE_SLOT_INDEX);
+        DataIntegrityViolationException slotFailure =
+                new DataIntegrityViolationException("slot conflict", postgresFailure);
+        when(interviewRepository.saveAndFlush(any(Interview.class))).thenThrow(slotFailure);
+
+        InterviewSlotConflictException conflict = assertThrows(InterviewSlotConflictException.class,
+                () -> interviewService.scheduleInterview(7L, request, hr(company)));
+
+        assertEquals("Interviewer is no longer available at the selected time", conflict.getMessage());
+
+        application.setStatus(ApplicationStatus.HR_INTERVIEW);
+        DataIntegrityViolationException unrelated = new DataIntegrityViolationException("other constraint");
+        when(interviewRepository.saveAndFlush(any(Interview.class))).thenThrow(unrelated);
+        assertEquals(unrelated, assertThrows(DataIntegrityViolationException.class,
+                () -> interviewService.scheduleInterview(7L, request, hr(company))));
     }
 
     @Test

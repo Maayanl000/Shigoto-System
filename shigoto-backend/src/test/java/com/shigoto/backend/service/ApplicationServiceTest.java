@@ -36,6 +36,7 @@ import java.util.Optional;
 import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -52,6 +53,7 @@ class ApplicationServiceTest {
     private CvStorageService cvStorageService;
     private NotificationEventPublisher notificationEventPublisher;
     private InterviewRepository interviewRepository;
+    private UserRepository userRepository;
 
     @BeforeEach
     void setUp() {
@@ -59,8 +61,9 @@ class ApplicationServiceTest {
         cvStorageService = mock(CvStorageService.class);
         notificationEventPublisher = mock(NotificationEventPublisher.class);
         interviewRepository = mock(InterviewRepository.class);
+        userRepository = mock(UserRepository.class);
         applicationService = new ApplicationService(
-                applicationRepository, mock(UserRepository.class), mock(JobRepository.class), cvStorageService,
+                applicationRepository, userRepository, mock(JobRepository.class), cvStorageService,
                 notificationEventPublisher, interviewRepository);
     }
 
@@ -216,16 +219,58 @@ class ApplicationServiceTest {
     }
 
     @Test
-    void deletingApplicationAlsoDeletesStoredCv() {
-        Application application = assignedApplication(LocalDateTime.now().plusHours(1));
+    void sameCompanyHrDeletesApplicationAndStoredCv() {
+        Company company = Company.builder().id(10L).name("Example Company").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
         application.setCvUrl("123e4567-e89b-12d3-a456-426614174000.pdf");
-        when(applicationRepository.findById(1L)).thenReturn(Optional.of(application));
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
 
-        applicationService.deleteApplication(1L);
+        applicationService.deleteApplication(1L, hr);
 
         verify(applicationRepository).delete(application);
         verify(applicationRepository).flush();
         verify(cvStorageService).delete(application.getCvUrl());
+    }
+
+    @Test
+    void foreignCompanyHrCannotDeleteApplicationOrStoredCv() {
+        Company company = Company.builder().id(10L).name("Company A").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        when(applicationRepository.findByIdAndJobCompany(99L, company)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> applicationService.deleteApplication(99L, hr));
+
+        verify(applicationRepository, never()).delete(any());
+        verify(applicationRepository, never()).flush();
+        verify(cvStorageService, never()).delete(any());
+    }
+
+    @Test
+    void hrCandidateHistoryUsesCandidateAndCompanyScopedRepositoryQuery() {
+        Company company = Company.builder().id(10L).name("Company A").build();
+        Company otherCompany = Company.builder().id(11L).name("Company B").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        User candidate = User.builder().id(3L).role(Role.CANDIDATE).build();
+        Application ownApplication = Application.builder().id(1L).candidate(candidate)
+                .job(Job.builder().id(2L).company(company).build()).status(ApplicationStatus.APPLIED)
+                .hrNotes("OWN_PRIVATE_NOTES").build();
+        Application foreignApplication = Application.builder().id(4L).candidate(candidate)
+                .job(Job.builder().id(5L).company(otherCompany).build()).status(ApplicationStatus.APPLIED)
+                .hrNotes("FOREIGN_PRIVATE_NOTES").build();
+        when(userRepository.findById(3L)).thenReturn(Optional.of(candidate));
+        when(applicationRepository.findByCandidateIdAndJobCompanyOrderByAppliedAtDesc(3L, company))
+                .thenReturn(List.of(ownApplication));
+
+        var history = applicationService.getApplicationsByCandidate(3L, hr);
+
+        assertEquals(List.of(1L), history.stream().map(response -> response.id()).toList());
+        assertEquals("OWN_PRIVATE_NOTES", history.getFirst().hrNotes());
+        assertFalse(history.stream().anyMatch(response ->
+                foreignApplication.getHrNotes().equals(response.hrNotes())));
+        verify(applicationRepository).findByCandidateIdAndJobCompanyOrderByAppliedAtDesc(3L, company);
+        verify(applicationRepository, never()).findByCandidateIdOrderByAppliedAtDesc(3L);
     }
 
     @Test

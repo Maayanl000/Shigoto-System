@@ -8,6 +8,7 @@ import com.shigoto.backend.dto.HrScheduledInterviewResponseDTO;
 import com.shigoto.backend.dto.InterviewerInterviewResponseDTO;
 import com.shigoto.backend.dto.InterviewerCandidateReviewDTO;
 import com.shigoto.backend.entity.*;
+import com.shigoto.backend.exception.InterviewSlotConflictException;
 import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.ApplicationRepository;
 import com.shigoto.backend.repository.InterviewRepository;
@@ -15,6 +16,9 @@ import com.shigoto.backend.repository.UserRepository;
 import com.shigoto.backend.messaging.CandidateNotificationEvent;
 import com.shigoto.backend.messaging.NotificationEventPublisher;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.exception.ConstraintViolationException;
+import org.postgresql.util.PSQLException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +32,10 @@ import java.util.Objects;
 @Service
 @RequiredArgsConstructor
 public class InterviewService {
+
+    static final String ACTIVE_SLOT_INDEX = "uk_interviews_active_interviewer_slot";
+    private static final String SLOT_CONFLICT_MESSAGE =
+            "Interviewer is no longer available at the selected time";
 
     private final InterviewRepository interviewRepository;
     private final ApplicationRepository applicationRepository;
@@ -84,7 +92,7 @@ public class InterviewService {
             application.transitionTo(ApplicationStatus.HR_INTERVIEW);
         }
         applicationRepository.save(application);
-        Interview saved = interviewRepository.save(interview);
+        Interview saved = saveWithSlotConflictMapping(interview);
         publish(saved, NotificationType.INTERVIEW_SCHEDULED);
         return HrScheduledInterviewResponseDTO.from(saved);
     }
@@ -128,7 +136,7 @@ public class InterviewService {
         interview.setInterviewer(interviewer);
         interview.setScheduledAt(request.scheduledAt());
         interview.setMeetingLink(meetingLink);
-        Interview saved = interviewRepository.save(interview);
+        Interview saved = saveWithSlotConflictMapping(interview);
         publish(saved, NotificationType.INTERVIEW_RESCHEDULED);
         return HrScheduledInterviewResponseDTO.from(saved);
     }
@@ -335,6 +343,32 @@ public class InterviewService {
         } catch (URISyntaxException ex) {
             throw new IllegalArgumentException("Meeting link must be a valid HTTP or HTTPS URL");
         }
+    }
+
+    private Interview saveWithSlotConflictMapping(Interview interview) {
+        try {
+            return interviewRepository.saveAndFlush(interview);
+        } catch (DataIntegrityViolationException failure) {
+            if (isActiveSlotConflict(failure)) {
+                throw new InterviewSlotConflictException(SLOT_CONFLICT_MESSAGE, failure);
+            }
+            throw failure;
+        }
+    }
+
+    private boolean isActiveSlotConflict(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException constraintFailure
+                    && ACTIVE_SLOT_INDEX.equals(constraintFailure.getConstraintName())) {
+                return true;
+            }
+            if (cause instanceof PSQLException postgresFailure
+                    && postgresFailure.getServerErrorMessage() != null
+                    && ACTIVE_SLOT_INDEX.equals(postgresFailure.getServerErrorMessage().getConstraint())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void publish(Interview interview, NotificationType type) {

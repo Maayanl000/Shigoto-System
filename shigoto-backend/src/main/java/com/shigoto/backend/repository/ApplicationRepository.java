@@ -15,6 +15,9 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
     // שאילתת עזר שנצטרך בעתיד: למצוא את כל המועמדויות של מועמד ספציפי לפי ה-ID שלו
     List<Application> findByCandidateIdOrderByAppliedAtDesc(Long candidateId);
 
+    List<Application> findByCandidateIdAndJobCompanyOrderByAppliedAtDesc(
+            Long candidateId, Company company);
+
     // שאילתת עזר: למצוא את כל המועמדויות ששייכות למשרה ספציפית
     List<Application> findByJobId(Long jobId);
 

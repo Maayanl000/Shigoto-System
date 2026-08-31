@@ -81,10 +81,8 @@ public class ApplicationService {
         }
     }
     // פונקציה למחיקת מועמדות לפי ID
-    public void deleteApplication(Long applicationId) {
-        Application application = applicationRepository.findById(applicationId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Application not found with id: " + applicationId));
+    public void deleteApplication(Long applicationId, User hr) {
+        Application application = findHrCompanyApplication(applicationId, hr);
         applicationRepository.delete(application);
         applicationRepository.flush();
         cvStorageService.delete(application.getCvUrl());
@@ -297,7 +295,9 @@ public class ApplicationService {
         return InterviewerSubmittedTaskDTO.from(applicationRepository.save(application));
     }
 
-    public List<StaffApplicationResponseDTO> getApplicationsByCandidate(Long candidateId) {
+    @Transactional(readOnly = true)
+    public List<StaffApplicationResponseDTO> getApplicationsByCandidate(Long candidateId, User hr) {
+        requireHrWithCompany(hr);
         var candidate = userRepository.findById(candidateId)
                 .orElseThrow(() -> new ResourceNotFoundException("Candidate not found with id: " + candidateId));
 
@@ -305,7 +305,8 @@ public class ApplicationService {
             throw new IllegalArgumentException("Referenced user is not a candidate");
         }
 
-        return applicationRepository.findByCandidateIdOrderByAppliedAtDesc(candidateId)
+        return applicationRepository.findByCandidateIdAndJobCompanyOrderByAppliedAtDesc(
+                        candidateId, hr.getCompany())
                 .stream()
                 .map(StaffApplicationResponseDTO::from)
                 .toList();
