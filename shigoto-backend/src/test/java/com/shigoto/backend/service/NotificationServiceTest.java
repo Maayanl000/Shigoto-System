@@ -80,6 +80,33 @@ class NotificationServiceTest {
         assertFalse(saved.getValue().getMessage().contains("PRIVATE_REVIEW"));
     }
 
+    @Test void offerAndHiredMilestonesPersistCandidateSafeNotifications() {
+        User candidate = User.builder().id(3L).firstName("Dana").role(Role.CANDIDATE).build();
+        Application application = Application.builder().id(7L).candidate(candidate)
+                .job(Job.builder().title("Backend Developer").build())
+                .hrNotes("PRIVATE_HR_SENTINEL").taskReviewNotes("PRIVATE_REVIEW_SENTINEL").build();
+        when(users.findById(3L)).thenReturn(Optional.of(candidate));
+        when(applications.findById(7L)).thenReturn(Optional.of(application));
+
+        service.receive(CandidateNotificationEvent.of(NotificationType.APPLICATION_OFFERED, 3L, 7L, null));
+        service.receive(CandidateNotificationEvent.of(NotificationType.APPLICATION_HIRED, 3L, 7L, null));
+
+        ArgumentCaptor<Notification> saved = ArgumentCaptor.forClass(Notification.class);
+        verify(notifications, times(2)).saveAndFlush(saved.capture());
+        Notification offered = saved.getAllValues().get(0);
+        Notification hired = saved.getAllValues().get(1);
+        assertEquals("Offer update", offered.getTitle());
+        assertTrue(offered.getMessage().contains("move forward with an offer for Backend Developer"));
+        assertTrue(offered.getMessage().startsWith("Dana,"));
+        assertEquals("Hiring update", hired.getTitle());
+        assertTrue(hired.getMessage().contains("Congratulations, Dana!"));
+        assertTrue(hired.getMessage().contains("Backend Developer"));
+        for (Notification notification : saved.getAllValues()) {
+            assertFalse(notification.getMessage().contains("PRIVATE_HR_SENTINEL"));
+            assertFalse(notification.getMessage().contains("PRIVATE_REVIEW_SENTINEL"));
+        }
+    }
+
     @Test void mineIsNewestFirstAndReadIsRecipientScopedAndIdempotent() {
         User candidate = User.builder().id(3L).role(Role.CANDIDATE).build();
         Notification newest = notification(2L, candidate, LocalDateTime.now());

@@ -433,7 +433,11 @@ class StaffEndpointSecurityTest {
     void candidateCannotChangeHrStatusOrAssignHomeTask() throws Exception {
         mockMvc.perform(put("/api/hr/applications/1/status")
                         .with(user("candidate").roles("CANDIDATE")).with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"REJECTED\"}"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"HIRED\"}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/hr/applications/1/status")
+                        .with(user("interviewer").roles("INTERVIEWER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"HIRED\"}"))
                 .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/hr/applications/1/home-task")
                         .with(user("candidate").roles("CANDIDATE")).with(csrf())

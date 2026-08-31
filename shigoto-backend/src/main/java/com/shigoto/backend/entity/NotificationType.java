@@ -2,6 +2,8 @@ package com.shigoto.backend.entity;
 
 public enum NotificationType {
     APPLICATION_REJECTED,
+    APPLICATION_OFFERED,
+    APPLICATION_HIRED,
     HOME_TASK_ASSIGNED,
     HOME_TASK_UPDATED,
     INTERVIEW_SCHEDULED,

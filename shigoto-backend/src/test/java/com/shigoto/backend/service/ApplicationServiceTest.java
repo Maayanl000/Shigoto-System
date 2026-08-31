@@ -11,6 +11,7 @@ import com.shigoto.backend.entity.TaskReviewDecision;
 import com.shigoto.backend.entity.Interview;
 import com.shigoto.backend.entity.InterviewStatus;
 import com.shigoto.backend.entity.InterviewType;
+import com.shigoto.backend.entity.NotificationType;
 import com.shigoto.backend.dto.InterviewerSubmittedTaskDTO;
 import com.shigoto.backend.dto.ApplicationResponseDTO;
 import com.shigoto.backend.dto.HrApplicationDetailsDTO;
@@ -39,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -417,6 +419,80 @@ class ApplicationServiceTest {
     }
 
     @Test
+    void hrCanMoveHrInterviewBackToAppliedWhenNoActiveOrCompletedHrInterviewExists() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        application.setStatus(ApplicationStatus.HR_INTERVIEW);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
+
+        var details = applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.APPLIED, hr);
+
+        assertEquals(ApplicationStatus.APPLIED, details.status());
+        assertTrue(application.getStatusChangedAt() != null);
+        verify(interviewRepository).existsByApplicationIdAndTypeAndStatusNot(
+                1L, InterviewType.HR, InterviewStatus.CANCELED);
+        verify(notificationEventPublisher, never()).publishAfterCommit(any());
+    }
+
+    @Test
+    void hrInterviewCannotMoveBackWhileScheduledOrCompletedHrInterviewExists() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        application.setStatus(ApplicationStatus.HR_INTERVIEW);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+        when(interviewRepository.existsByApplicationIdAndTypeAndStatusNot(
+                1L, InterviewType.HR, InterviewStatus.CANCELED)).thenReturn(true);
+
+        assertThrows(IllegalArgumentException.class, () ->
+                applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.APPLIED, hr));
+
+        assertEquals(ApplicationStatus.HR_INTERVIEW, application.getStatus());
+        verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void hrInterviewCannotMoveBackWhenHomeTaskDataExists() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        application.setStatus(ApplicationStatus.HR_INTERVIEW);
+        application.setTaskInstructions("Unexpected persisted task");
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.APPLIED, hr));
+
+        verify(interviewRepository, never()).existsByApplicationIdAndTypeAndStatusNot(any(), any(), any());
+        verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void unsupportedBackwardTransitionsRemainBlocked() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+
+        var unsupported = List.of(
+                new ApplicationStatus[]{ApplicationStatus.TASK_SENT, ApplicationStatus.HR_INTERVIEW},
+                new ApplicationStatus[]{ApplicationStatus.TASK_SUBMITTED, ApplicationStatus.TASK_SENT},
+                new ApplicationStatus[]{ApplicationStatus.TASK_APPROVED, ApplicationStatus.TASK_SUBMITTED},
+                new ApplicationStatus[]{ApplicationStatus.TECH_INTERVIEW_SCHEDULED, ApplicationStatus.TASK_APPROVED},
+                new ApplicationStatus[]{ApplicationStatus.OFFER, ApplicationStatus.TECH_INTERVIEW_SCHEDULED},
+                new ApplicationStatus[]{ApplicationStatus.REJECTED, ApplicationStatus.HR_INTERVIEW});
+        for (ApplicationStatus[] transition : unsupported) {
+            application.setStatus(transition[0]);
+            assertThrows(IllegalArgumentException.class, () -> applicationService.transitionHrApplicationStatus(
+                    1L, transition[1], hr));
+        }
+
+        verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
     void hrCannotSkipFromAppliedDirectlyToOffer() {
         Company company = Company.builder().id(10L).name("Wix").build();
         User hr = User.builder().id(20L).role(Role.HR).company(company).build();
@@ -426,6 +502,69 @@ class ApplicationServiceTest {
         assertThrows(IllegalArgumentException.class, () ->
                 applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.OFFER, hr));
         verify(applicationRepository, never()).save(any());
+    }
+
+    @Test
+    void validPreOfferTransitionPublishesOfferedEvent() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        application.setStatus(ApplicationStatus.TECH_INTERVIEW_SCHEDULED);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
+
+        var details = applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.OFFER, hr);
+
+        assertEquals(ApplicationStatus.OFFER, details.status());
+        verify(notificationEventPublisher).publishAfterCommit(argThat(event ->
+                event.type() == NotificationType.APPLICATION_OFFERED
+                        && event.applicationId().equals(1L)
+                        && event.interviewId() == null));
+    }
+
+    @Test
+    void offerCanBecomeHiredAndPublishesHiredEvent() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        application.setStatus(ApplicationStatus.OFFER);
+        application.setStatusChangedAt(LocalDateTime.now().minusDays(1));
+        LocalDateTime previousStatusChange = application.getStatusChangedAt();
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+        when(applicationRepository.save(application)).thenReturn(application);
+
+        var details = applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.HIRED, hr);
+
+        assertEquals(ApplicationStatus.HIRED, details.status());
+        assertTrue(application.getStatusChangedAt().isAfter(previousStatusChange));
+        verify(notificationEventPublisher).publishAfterCommit(argThat(event ->
+                event.type() == NotificationType.APPLICATION_HIRED
+                        && event.applicationId().equals(1L)
+                        && event.interviewId() == null));
+    }
+
+    @Test
+    void onlyOfferCanBecomeHiredAndHiredIsTerminal() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+
+        for (ApplicationStatus status : List.of(ApplicationStatus.APPLIED, ApplicationStatus.HR_INTERVIEW,
+                ApplicationStatus.TASK_SENT, ApplicationStatus.TASK_SUBMITTED, ApplicationStatus.TASK_APPROVED,
+                ApplicationStatus.TECH_INTERVIEW_SCHEDULED, ApplicationStatus.REJECTED)) {
+            application.setStatus(status);
+            assertThrows(IllegalArgumentException.class, () -> applicationService.transitionHrApplicationStatus(
+                    1L, ApplicationStatus.HIRED, hr));
+        }
+        application.setStatus(ApplicationStatus.HIRED);
+        assertThrows(IllegalArgumentException.class, () -> applicationService.transitionHrApplicationStatus(
+                1L, ApplicationStatus.OFFER, hr));
+        assertThrows(IllegalArgumentException.class, () -> applicationService.transitionHrApplicationStatus(
+                1L, ApplicationStatus.REJECTED, hr));
+
+        verify(applicationRepository, never()).save(any());
+        verify(notificationEventPublisher, never()).publishAfterCommit(any());
     }
 
     @Test
@@ -625,7 +764,7 @@ class ApplicationServiceTest {
         when(applicationRepository.findByIdAndJobCompany(99L, company)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () ->
-                applicationService.transitionHrApplicationStatus(99L, ApplicationStatus.REJECTED, hr));
+                applicationService.transitionHrApplicationStatus(99L, ApplicationStatus.HIRED, hr));
         verify(applicationRepository, never()).save(any());
     }
 
@@ -637,6 +776,16 @@ class ApplicationServiceTest {
                 applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.REJECTED, hr));
         assertThrows(AccessDeniedException.class, () ->
                 applicationService.assignHomeTask(1L, "Build an API", LocalDateTime.now().plusDays(2), hr));
+        verify(applicationRepository, never()).findByIdAndJobCompany(any(), any());
+    }
+
+    @Test
+    void nonHrCannotChangeApplicationStatus() {
+        User candidate = User.builder().id(20L).role(Role.CANDIDATE).build();
+
+        assertThrows(AccessDeniedException.class, () ->
+                applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.HR_INTERVIEW, candidate));
+
         verify(applicationRepository, never()).findByIdAndJobCompany(any(), any());
     }
 

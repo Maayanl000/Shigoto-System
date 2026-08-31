@@ -10,7 +10,7 @@ import api from '../services/api';
 const statusLabels = {
   APPLIED: 'Applied', HR_INTERVIEW: 'HR interview', TASK_SENT: 'Task sent',
   TASK_SUBMITTED: 'Task submitted', TASK_APPROVED: 'Task approved',
-  TECH_INTERVIEW_SCHEDULED: 'Technical interview scheduled', OFFER: 'Offer', REJECTED: 'Rejected',
+  TECH_INTERVIEW_SCHEDULED: 'Technical interview scheduled', OFFER: 'Offer', HIRED: 'Hired', REJECTED: 'Rejected',
 };
 
 const employmentLabels = {
@@ -63,6 +63,7 @@ export default function CandidateDetails() {
   const [interviewersError, setInterviewersError] = useState('');
   const [interviews, setInterviews] = useState([]);
   const [interviewsLoading, setInterviewsLoading] = useState(true);
+  const [interviewsLoadedSuccessfully, setInterviewsLoadedSuccessfully] = useState(false);
   const [interviewType, setInterviewType] = useState('');
   const [interviewerId, setInterviewerId] = useState('');
   const [interviewTime, setInterviewTime] = useState('');
@@ -76,17 +77,33 @@ export default function CandidateDetails() {
   const [candidateFeedbackBusy, setCandidateFeedbackBusy] = useState(false);
   const [candidateFeedbackMessage, setCandidateFeedbackMessage] = useState('');
 
+  const canMoveBackToApplied = record?.status === 'HR_INTERVIEW'
+    && !interviewsLoading
+    && interviewsLoadedSuccessfully
+    && !record.taskInstructions
+    && !record.taskDeadline
+    && !record.taskRepoUrl
+    && !interviews.some((interview) => interview.type === 'HR' && interview.status !== 'CANCELED');
   const statusActions = record ? {
     APPLIED: [{ label: 'Move to HR interview', status: 'HR_INTERVIEW' }, { label: 'Reject', status: 'REJECTED' }],
-    HR_INTERVIEW: [{ label: 'Reject', status: 'REJECTED' }],
+    HR_INTERVIEW: [
+      ...(canMoveBackToApplied ? [{ label: 'Move back to applied', status: 'APPLIED', backward: true }] : []),
+      { label: 'Reject', status: 'REJECTED' },
+    ],
     TASK_SENT: [{ label: 'Reject', status: 'REJECTED' }],
     TASK_SUBMITTED: [{ label: 'Reject', status: 'REJECTED' }],
     TASK_APPROVED: [{ label: 'Reject', status: 'REJECTED' }],
     TECH_INTERVIEW_SCHEDULED: [{ label: 'Make offer', status: 'OFFER' }, { label: 'Reject', status: 'REJECTED' }],
+    OFFER: [{ label: 'Mark as hired', status: 'HIRED' }],
   }[record.status] || [] : [];
   const schedulableTypes = record ? {
-    APPLIED: ['HR'], TASK_APPROVED: ['TECHNICAL'], TECH_INTERVIEW_SCHEDULED: ['MANAGER'],
+    APPLIED: ['HR'], HR_INTERVIEW: ['TECHNICAL'], TASK_APPROVED: ['TECHNICAL'],
+    TECH_INTERVIEW_SCHEDULED: ['MANAGER'],
   }[record.status] || [] : [];
+  const showTaskSection = record && (
+    record.taskInstructions || record.taskDeadline || record.taskRepoUrl
+    || ['HR_INTERVIEW', 'TASK_SENT', 'TASK_SUBMITTED', 'TASK_APPROVED'].includes(record.status)
+  );
   const selectedInterviewType = schedulableTypes.includes(interviewType)
     ? interviewType : schedulableTypes[0] || '';
   const interviewGroups = [
@@ -144,9 +161,11 @@ export default function CandidateDetails() {
 
   const loadInterviews = useCallback(async () => {
     setInterviewsLoading(true);
+    setInterviewsLoadedSuccessfully(false);
     try {
       const response = await api.get(`/hr/applications/${applicationId}/interviews`);
       setInterviews(Array.isArray(response.data) ? response.data : []);
+      setInterviewsLoadedSuccessfully(true);
     } catch {
       setInterviews([]);
     } finally {
@@ -157,8 +176,18 @@ export default function CandidateDetails() {
   useEffect(() => {
     let active = true;
     api.get(`/hr/applications/${applicationId}/interviews`)
-      .then((response) => { if (active) setInterviews(Array.isArray(response.data) ? response.data : []); })
-      .catch(() => { if (active) setInterviews([]); })
+      .then((response) => {
+        if (active) {
+          setInterviews(Array.isArray(response.data) ? response.data : []);
+          setInterviewsLoadedSuccessfully(true);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setInterviews([]);
+          setInterviewsLoadedSuccessfully(false);
+        }
+      })
       .finally(() => { if (active) setInterviewsLoading(false); });
     return () => { active = false; };
   }, [applicationId]);
@@ -423,14 +452,14 @@ export default function CandidateDetails() {
             </CardContent></Card>
           </Grid>
 
-          <Grid size={{ xs: 12, md: 6 }}>
+          {showTaskSection && <Grid size={{ xs: 12, md: 6 }}>
             <Card sx={{ height: '100%' }}><CardContent>
               <Typography variant="h6" gutterBottom>Task information</Typography>
               <Stack spacing={1.5}>
                 {record.taskInstructions && <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{record.taskInstructions}</Typography>}
                 {record.status === 'TASK_SUBMITTED' && <Alert severity="info">Submitted task is awaiting technical review.</Alert>}
                 {record.status === 'TASK_APPROVED' && <Alert severity="success">Technical review passed.</Alert>}
-                <Detail label="Deadline" value={formatDate(record.taskDeadline)} />
+                {record.taskDeadline && <Detail label="Deadline" value={formatDate(record.taskDeadline)} />}
                 {record.status === 'TASK_SENT' && (!editingTaskDeadline ? (
                   <Button variant="outlined" onClick={() => {
                     setTaskDeadline(toLocalDateTimeInput(record.taskDeadline));
@@ -452,7 +481,7 @@ export default function CandidateDetails() {
                     </Stack>
                   </Stack>
                 ))}
-                {record.taskRepoUrl ? <Link href={record.taskRepoUrl} target="_blank" rel="noopener noreferrer">Submitted repository</Link> : <Detail label="Repository" value={null} />}
+                {record.taskRepoUrl && <Link href={record.taskRepoUrl} target="_blank" rel="noopener noreferrer">Submitted repository</Link>}
                 {record.status === 'HR_INTERVIEW' && (
                   <Stack spacing={1.25}>
                     <TextField
@@ -476,7 +505,7 @@ export default function CandidateDetails() {
                 )}
               </Stack>
             </CardContent></Card>
-          </Grid>
+          </Grid>}
           <Grid size={{ xs: 12, md: 6 }}>
             <Card sx={{ height: '100%' }}><CardContent>
               <Typography variant="h6" gutterBottom>Interview history</Typography>
@@ -537,12 +566,13 @@ export default function CandidateDetails() {
           <Grid size={{ xs: 12 }}>
             <Card><CardContent>
               <Typography variant="h6" gutterBottom>Application actions</Typography>
+              {record.status === 'OFFER' && <Alert severity="success" sx={{ mb: 2 }}>An offer is pending. Mark the candidate as hired when the hiring decision is complete.</Alert>}
               {statusActions.length > 0 ? (
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
                   {statusActions.map((action) => (
                     <Button
                       key={action.status}
-                      variant={action.status === 'REJECTED' ? 'outlined' : 'contained'}
+                      variant={action.status === 'REJECTED' || action.backward ? 'outlined' : 'contained'}
                       color={action.status === 'REJECTED' ? 'error' : 'primary'}
                       disabled={statusBusy}
                       onClick={() => {

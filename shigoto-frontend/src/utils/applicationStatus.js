@@ -8,6 +8,7 @@ const statusDisplay = {
   TASK_APPROVED: { label: 'Task approved', progressStage: 3, color: 'secondary' },
   TECH_INTERVIEW_SCHEDULED: { label: 'Technical interview scheduled', progressStage: 4, color: 'secondary' },
   OFFER: { label: 'Offer', progressStage: 5, color: 'success' },
+  HIRED: { label: 'Hired', progressStage: 5, color: 'success' },
   REJECTED: { label: 'Rejected', progressStage: 5, color: 'error' },
 };
 

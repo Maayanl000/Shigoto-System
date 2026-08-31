@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Box, Button, Card, CardActionArea, CardContent, Chip, CircularProgress, Divider, FormControl, InputLabel, MenuItem, Paper, Select, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardActionArea, CardContent, Chip, CircularProgress, Divider, FormControl, InputLabel, MenuItem, Paper, Select, Stack, Tab, Tabs, Typography } from '@mui/material';
 import AccessTimeRoundedIcon from '@mui/icons-material/AccessTimeRounded';
 import PageSkeleton from '../components/PageSkeleton';
 import api from '../services/api';
-import { getKanbanDatePresentation, getKanbanStatusLabel } from '../utils/hrKanban';
+import { getHistoryGroup, getKanbanDatePresentation, getKanbanStatusLabel, isActiveKanbanStatus } from '../utils/hrKanban';
 
 const columnDefinitions = [
   { title: 'Applied', color: '#64748b', statuses: ['APPLIED'] },
   { title: 'Screening', color: '#2563eb', statuses: ['HR_INTERVIEW'] },
   { title: 'Task', color: '#7c3aed', statuses: ['TASK_SENT', 'TASK_SUBMITTED', 'TASK_APPROVED'] },
   { title: 'Interview', color: '#087f8c', statuses: ['TECH_INTERVIEW_SCHEDULED'] },
-  { title: 'Decision', color: '#d97706', statuses: ['OFFER', 'REJECTED'] },
+  { title: 'Decision', color: '#d97706', statuses: ['OFFER'] },
 ];
 
 const SELECT_JOB_PLACEHOLDER = '__select_job__';
@@ -33,6 +33,7 @@ export default function HrDashboard() {
   const [applications, setApplications] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [selectedJobId, setSelectedJobId] = useState(SELECT_JOB_PLACEHOLDER);
+  const [dashboardMode, setDashboardMode] = useState('active');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -76,6 +77,15 @@ export default function HrDashboard() {
     ...column,
     applications: applications.filter((application) => column.statuses.includes(application.status)),
   })), [applications]);
+  const activeApplications = useMemo(
+    () => applications.filter((application) => isActiveKanbanStatus(application.status)), [applications],
+  );
+  const historyGroups = useMemo(() => ({
+    hired: applications.filter((application) => getHistoryGroup(application.status) === 'hired'),
+    rejected: applications.filter((application) => getHistoryGroup(application.status) === 'rejected'),
+  }), [applications]);
+  const historyApplications = [...historyGroups.hired, ...historyGroups.rejected];
+  const visibleApplications = dashboardMode === 'active' ? activeApplications : historyApplications;
   const activeJobId = selectedJobId === SELECT_JOB_PLACEHOLDER ? '' : selectedJobId;
   const hasJobFilter = Boolean(activeJobId);
   const selectedJob = jobs.find((job) => String(job.id) === String(activeJobId));
@@ -115,11 +125,16 @@ export default function HrDashboard() {
             ))}
           </Select>
         </FormControl>
-        <Chip label={`${applications.length} application${applications.length === 1 ? '' : 's'}`} size="small" color="secondary" variant="outlined" />
+        <Chip label={`${visibleApplications.length} application${visibleApplications.length === 1 ? '' : 's'}`} size="small" color="secondary" variant="outlined" />
         <Typography variant="caption" color="text.secondary" sx={{ ml: { md: 'auto' } }}>
           Cards are grouped by current application status
         </Typography>
       </Paper>
+
+      <Tabs value={dashboardMode} onChange={(_, value) => setDashboardMode(value)} sx={{ mb: 2.5 }} aria-label="HR application view">
+        <Tab value="active" label="Active" />
+        <Tab value="history" label="History" />
+      </Tabs>
 
       {loading && (
         <Box sx={{ minHeight: 300, display: 'grid', placeItems: 'center' }}>
@@ -133,22 +148,22 @@ export default function HrDashboard() {
         </Alert>
       )}
 
-      {!loading && !error && applications.length === 0 && !hasJobFilter && (
+      {!loading && !error && visibleApplications.length === 0 && !hasJobFilter && (
         <Paper variant="outlined" sx={{ py: 8, px: 3, textAlign: 'center' }}>
-          <Typography variant="h6">No applications yet</Typography>
-          <Typography color="text.secondary" sx={{ mt: 1 }}>Applications for your company's jobs will appear here.</Typography>
+          <Typography variant="h6">{dashboardMode === 'active' ? 'No active applications' : 'No application history'}</Typography>
+          <Typography color="text.secondary" sx={{ mt: 1 }}>{dashboardMode === 'active' ? 'Applications in progress will appear here.' : 'Hired and rejected applications will appear here.'}</Typography>
         </Paper>
       )}
 
-      {!loading && !error && applications.length === 0 && hasJobFilter && (
+      {!loading && !error && visibleApplications.length === 0 && hasJobFilter && (
         <Paper variant="outlined" sx={{ py: 4, px: 3, mb: 2.5, textAlign: 'center' }}>
-          <Typography variant="h6">No applications for this job</Typography>
+          <Typography variant="h6">{dashboardMode === 'active' ? 'No active applications for this job' : 'No application history for this job'}</Typography>
           <Typography color="text.secondary" sx={{ mt: 1 }}>Choose another job or return to All jobs.</Typography>
           <Button variant="text" onClick={() => { setSelectedJobId(''); loadPipeline(); }} sx={{ mt: 1 }}>Show all jobs</Button>
         </Paper>
       )}
 
-      {!loading && !error && (applications.length > 0 || hasJobFilter) && (
+      {!loading && !error && dashboardMode === 'active' && visibleApplications.length > 0 && (
         <Box sx={{ overflowX: 'auto', pb: 1 }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(210px, 1fr))', gap: 2, minWidth: 1120 }}>
             {columns.map((column) => (
@@ -185,6 +200,37 @@ export default function HrDashboard() {
               </Box>
             ))}
           </Box>
+        </Box>
+      )}
+
+      {!loading && !error && dashboardMode === 'history' && visibleApplications.length > 0 && (
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' }, gap: 2 }}>
+          {[
+            { key: 'hired', title: 'Hired', color: '#15803d' },
+            { key: 'rejected', title: 'Rejected', color: '#b91c1c' },
+          ].map((group) => (
+            <Paper key={group.key} variant="outlined" sx={{ p: 2, minHeight: 260, borderTop: 3, borderTopColor: group.color }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                <Typography variant="h6">{group.title}</Typography>
+                <Chip label={historyGroups[group.key].length} size="small" />
+              </Stack>
+              {historyGroups[group.key].map((application) => (
+                <Card key={application.applicationId} sx={{ mb: 1.25 }}>
+                  <CardActionArea onClick={() => navigate(`/hr/applications/${application.applicationId}`)}>
+                    <CardContent>
+                      <Typography variant="body2" fontWeight={700}>{application.candidateName}</Typography>
+                      <Typography variant="caption" color="text.secondary">{application.jobTitle}</Typography>
+                      <Chip label={getKanbanStatusLabel(application)} size="small" variant="outlined" sx={{ display: 'flex', width: 'fit-content', mt: 1.5 }} />
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.25 }}>
+                        {formatKanbanTimestamp(application)}
+                      </Typography>
+                    </CardContent>
+                  </CardActionArea>
+                </Card>
+              ))}
+              {historyGroups[group.key].length === 0 && <Typography variant="body2" color="text.secondary">No {group.title.toLowerCase()} applications.</Typography>}
+            </Paper>
+          ))}
         </Box>
       )}
     </PageSkeleton>

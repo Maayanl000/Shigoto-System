@@ -13,8 +13,9 @@ import { getApplicationStatusDisplay } from '../utils/applicationStatus';
 
 const activeStatuses = new Set([
   'APPLIED', 'HR_INTERVIEW', 'TASK_SENT', 'TASK_SUBMITTED', 'TASK_APPROVED', 'TECH_INTERVIEW_SCHEDULED',
+  'OFFER',
 ]);
-const pastStatuses = new Set(['OFFER', 'REJECTED']);
+const pastStatuses = new Set(['HIRED', 'REJECTED']);
 
 function fetchCandidateDashboard() {
   return Promise.all([api.get('/applications/mine'), api.get('/interviews/mine'), api.get('/notifications/mine')]);
@@ -258,7 +259,7 @@ export default function CandidateDashboard() {
                 <Stack spacing={2}>
                   <Typography variant="h5">Past applications</Typography>
                   {pastApplications.length ? pastApplications.map((item) => <ApplicationCard key={item.id} application={item} />)
-                    : <EmptyState title="No past applications" description="Offers and rejected applications will remain available here." />}
+                    : <EmptyState title="No past applications" description="Hired and rejected applications will remain available here." />}
                 </Stack>
               </Grid>
               <Grid size={{ xs: 12, lg: 6 }}>

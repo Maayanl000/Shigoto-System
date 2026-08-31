@@ -50,6 +50,7 @@ public class InterviewService {
         Application application = applicationRepository.findByIdAndJobCompany(applicationId, hr.getCompany())
                 .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
         if (application.getStatus() == ApplicationStatus.OFFER
+                || application.getStatus() == ApplicationStatus.HIRED
                 || application.getStatus() == ApplicationStatus.REJECTED) {
             throw new IllegalArgumentException("Cannot schedule an interview for a terminal application");
         }
@@ -144,7 +145,9 @@ public class InterviewService {
                 && application.getStatus() == ApplicationStatus.TECH_INTERVIEW_SCHEDULED
                 && !interviewRepository.existsByApplicationIdAndTypeAndStatusAndIdNot(
                         application.getId(), InterviewType.TECHNICAL, InterviewStatus.SCHEDULED, interviewId)) {
-            application.transitionTo(ApplicationStatus.TASK_APPROVED);
+            application.transitionTo(hasApprovedHomeTask(application)
+                    ? ApplicationStatus.TASK_APPROVED
+                    : ApplicationStatus.HR_INTERVIEW);
             applicationRepository.save(application);
         }
         Interview saved = interviewRepository.save(interview);
@@ -301,12 +304,19 @@ public class InterviewService {
         if (type == InterviewType.HR && status != ApplicationStatus.APPLIED) {
             throw new IllegalArgumentException("HR interview can only be scheduled for an applied application");
         }
-        if (type == InterviewType.TECHNICAL && status != ApplicationStatus.TASK_APPROVED) {
-            throw new IllegalArgumentException("Technical interview requires an approved home task");
+        if (type == InterviewType.TECHNICAL
+                && status != ApplicationStatus.HR_INTERVIEW
+                && status != ApplicationStatus.TASK_APPROVED) {
+            throw new IllegalArgumentException(
+                    "Technical interview can only be scheduled after the HR interview or an approved home task");
         }
         if (type == InterviewType.MANAGER && status != ApplicationStatus.TECH_INTERVIEW_SCHEDULED) {
             throw new IllegalArgumentException("Manager interview requires a scheduled technical interview stage");
         }
+    }
+
+    private boolean hasApprovedHomeTask(Application application) {
+        return application.getTaskRepoUrl() != null && !application.getTaskRepoUrl().isBlank();
     }
 
     private String validateMeetingLink(String value) {

@@ -8,5 +8,6 @@ public enum ApplicationStatus {
     TASK_APPROVED,              // המראיין אישר את המבחן (מפעיל JMS ל-HR)
     TECH_INTERVIEW_SCHEDULED,   // נקבע ראיון טכני מול המראיין
     OFFER,                      // הצעת עבודה
+    HIRED,                      // candidate was hired
     REJECTED                    // מועמדות נדחתה
 }

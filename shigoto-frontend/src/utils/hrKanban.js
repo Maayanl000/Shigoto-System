@@ -6,8 +6,24 @@ const statusLabels = {
   TASK_APPROVED: 'Task approved',
   TECH_INTERVIEW_SCHEDULED: 'Technical interview scheduled',
   OFFER: 'Offer',
+  HIRED: 'Hired',
   REJECTED: 'Rejected',
 };
+
+const activeStatuses = new Set([
+  'APPLIED', 'HR_INTERVIEW', 'TASK_SENT', 'TASK_SUBMITTED', 'TASK_APPROVED',
+  'TECH_INTERVIEW_SCHEDULED', 'OFFER',
+]);
+
+export function isActiveKanbanStatus(status) {
+  return activeStatuses.has(status);
+}
+
+export function getHistoryGroup(status) {
+  if (status === 'HIRED') return 'hired';
+  if (status === 'REJECTED') return 'rejected';
+  return null;
+}
 
 const interviewLabels = {
   HR: 'HR interview scheduled',

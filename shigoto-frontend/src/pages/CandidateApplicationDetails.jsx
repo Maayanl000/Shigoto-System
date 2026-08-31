@@ -281,12 +281,10 @@ export default function CandidateApplicationDetails() {
                 </CardContent>
               </Card>}
 
-              <Card sx={{ borderColor: hasTask ? 'secondary.main' : 'divider' }}>
+              {hasTask && <Card sx={{ borderColor: 'secondary.main' }}>
                 <CardContent>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center"><Stack direction="row" spacing={1} alignItems="center"><AssignmentOutlinedIcon color="secondary" /><Typography variant="h6">Technical home task</Typography></Stack><Chip label={hasTask ? 'Task stage' : 'Not assigned'} size="small" variant="outlined" /></Stack>
-                  {!hasTask ? (
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2, lineHeight: 1.75 }}>No technical task has been assigned yet.</Typography>
-                  ) : isTaskSubmitted ? (
+                  <Stack direction="row" justifyContent="space-between" alignItems="center"><Stack direction="row" spacing={1} alignItems="center"><AssignmentOutlinedIcon color="secondary" /><Typography variant="h6">Technical home task</Typography></Stack><Chip label="Task stage" size="small" variant="outlined" /></Stack>
+                  {isTaskSubmitted ? (
                     <Stack spacing={1.5} sx={{ mt: 2 }}>
                       <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.75 }}><strong>Instructions:</strong>{' '}{application.taskInstructions || 'Instructions unavailable'}</Typography>
                       <Typography variant="body2"><strong>Deadline:</strong> {taskDeadline || 'Deadline not available'}</Typography>
@@ -327,7 +325,7 @@ export default function CandidateApplicationDetails() {
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 2, lineHeight: 1.75 }}>No technical task has been assigned yet.</Typography>
                   )}
                 </CardContent>
-              </Card>
+              </Card>}
             </Stack>
           </Grid>
 

@@ -10,6 +10,7 @@ import com.shigoto.backend.entity.Interview;
 import com.shigoto.backend.entity.InterviewStatus;
 import com.shigoto.backend.entity.InterviewType;
 import com.shigoto.backend.entity.Job;
+import com.shigoto.backend.entity.NotificationType;
 import com.shigoto.backend.entity.Role;
 import com.shigoto.backend.entity.User;
 import com.shigoto.backend.exception.ResourceNotFoundException;
@@ -33,11 +34,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.ArgumentCaptor;
 
 class InterviewServiceTest {
     private InterviewRepository interviewRepository;
     private ApplicationRepository applicationRepository;
     private UserRepository userRepository;
+    private NotificationEventPublisher notificationEventPublisher;
     private InterviewService interviewService;
 
     @BeforeEach
@@ -45,8 +48,9 @@ class InterviewServiceTest {
         interviewRepository = mock(InterviewRepository.class);
         applicationRepository = mock(ApplicationRepository.class);
         userRepository = mock(UserRepository.class);
+        notificationEventPublisher = mock(NotificationEventPublisher.class);
         interviewService = new InterviewService(interviewRepository, applicationRepository, userRepository,
-                mock(NotificationEventPublisher.class));
+                notificationEventPublisher);
     }
 
     @Test
@@ -78,6 +82,9 @@ class InterviewServiceTest {
         User hr = hr(company);
         User interviewer = interviewer(5L, company);
         Application application = application(company, ApplicationStatus.TASK_APPROVED);
+        application.setTaskInstructions("Build an API");
+        application.setTaskDeadline(LocalDateTime.now().plusDays(1));
+        application.setTaskRepoUrl("https://github.com/candidate/task");
         HrInterviewScheduleRequestDTO request = validRequest(5L, InterviewType.TECHNICAL);
         stubScopedEntities(company, application, interviewer, request);
         when(interviewRepository.save(any())).thenAnswer(invocation -> {
@@ -93,6 +100,47 @@ class InterviewServiceTest {
         assertEquals(InterviewStatus.SCHEDULED, response.status());
         verify(applicationRepository).save(application);
         verify(interviewRepository).save(any(Interview.class));
+    }
+
+    @Test
+    void hrInterviewCanScheduleTechnicalInterviewWithoutCreatingTaskData() {
+        Company company = company(1L, "Wix");
+        User hr = hr(company);
+        User interviewer = interviewer(5L, company);
+        Application application = application(company, ApplicationStatus.HR_INTERVIEW);
+        HrInterviewScheduleRequestDTO request = validRequest(5L, InterviewType.TECHNICAL);
+        stubScopedEntities(company, application, interviewer, request);
+        when(interviewRepository.save(any())).thenAnswer(invocation -> {
+            Interview interview = invocation.getArgument(0);
+            interview.setId(9L);
+            return interview;
+        });
+
+        var response = interviewService.scheduleInterview(7L, request, hr);
+
+        assertEquals(ApplicationStatus.TECH_INTERVIEW_SCHEDULED, response.applicationStatus());
+        assertEquals(null, application.getTaskInstructions());
+        assertEquals(null, application.getTaskDeadline());
+        assertEquals(null, application.getTaskRepoUrl());
+        ArgumentCaptor<com.shigoto.backend.messaging.CandidateNotificationEvent> eventCaptor =
+                ArgumentCaptor.forClass(com.shigoto.backend.messaging.CandidateNotificationEvent.class);
+        verify(notificationEventPublisher).publishAfterCommit(eventCaptor.capture());
+        assertEquals(NotificationType.INTERVIEW_SCHEDULED, eventCaptor.getValue().type());
+    }
+
+    @Test
+    void technicalAndManagerInterviewSequencingRemainsControlled() {
+        Company company = company(1L, "Wix");
+        Application applied = application(company, ApplicationStatus.APPLIED);
+        when(applicationRepository.findByIdAndJobCompany(7L, company)).thenReturn(Optional.of(applied));
+        assertThrows(IllegalArgumentException.class, () -> interviewService.scheduleInterview(
+                7L, validRequest(5L, InterviewType.TECHNICAL), hr(company)));
+
+        Application hrInterview = application(company, ApplicationStatus.HR_INTERVIEW);
+        when(applicationRepository.findByIdAndJobCompany(7L, company)).thenReturn(Optional.of(hrInterview));
+        assertThrows(IllegalArgumentException.class, () -> interviewService.scheduleInterview(
+                7L, validRequest(5L, InterviewType.MANAGER), hr(company)));
+        verify(interviewRepository, never()).save(any());
     }
 
     @Test
@@ -141,10 +189,14 @@ class InterviewServiceTest {
     @Test
     void terminalApplicationCannotBeScheduled() {
         Company company = company(1L, "Wix");
-        Application application = application(company, ApplicationStatus.REJECTED);
-        when(applicationRepository.findByIdAndJobCompany(7L, company)).thenReturn(Optional.of(application));
-        assertThrows(IllegalArgumentException.class, () -> interviewService.scheduleInterview(
-                7L, validRequest(5L, InterviewType.TECHNICAL), hr(company)));
+        for (ApplicationStatus status : List.of(
+                ApplicationStatus.OFFER, ApplicationStatus.HIRED, ApplicationStatus.REJECTED)) {
+            Application application = application(company, status);
+            when(applicationRepository.findByIdAndJobCompany(7L, company)).thenReturn(Optional.of(application));
+            assertThrows(IllegalArgumentException.class, () -> interviewService.scheduleInterview(
+                    7L, validRequest(5L, InterviewType.TECHNICAL), hr(company)));
+        }
+        verify(interviewRepository, never()).save(any());
     }
 
     @Test
@@ -245,6 +297,22 @@ class InterviewServiceTest {
         assertEquals(ApplicationStatus.TASK_APPROVED, interview.getApplication().getStatus());
         verify(interviewRepository).save(interview);
         verify(interviewRepository, never()).delete(any());
+    }
+
+    @Test
+    void cancelingDirectTechnicalInterviewRestoresHrInterviewStage() {
+        Company company = company(1L, "Wix");
+        Interview interview = scheduledInterview(company, InterviewStatus.SCHEDULED);
+        interview.getApplication().setTaskInstructions(null);
+        interview.getApplication().setTaskDeadline(null);
+        interview.getApplication().setTaskRepoUrl(null);
+        when(interviewRepository.findByIdAndApplicationJobCompany(9L, company)).thenReturn(Optional.of(interview));
+        when(interviewRepository.save(interview)).thenReturn(interview);
+
+        var response = interviewService.cancelInterview(9L, hr(company));
+
+        assertEquals(InterviewStatus.CANCELED, response.status());
+        assertEquals(ApplicationStatus.HR_INTERVIEW, response.applicationStatus());
     }
 
     @Test
@@ -492,6 +560,9 @@ class InterviewServiceTest {
 
     private Interview scheduledInterview(Company company, InterviewStatus status) {
         Application application = application(company, ApplicationStatus.TECH_INTERVIEW_SCHEDULED);
+        application.setTaskInstructions("Build an API");
+        application.setTaskDeadline(LocalDateTime.now().plusDays(1));
+        application.setTaskRepoUrl("https://github.com/candidate/task");
         return Interview.builder().id(9L).application(application).interviewer(interviewer(5L, company))
                 .scheduledAt(LocalDateTime.now().plusDays(1)).meetingLink("https://meet.example.com/original")
                 .type(InterviewType.TECHNICAL).status(status).build();

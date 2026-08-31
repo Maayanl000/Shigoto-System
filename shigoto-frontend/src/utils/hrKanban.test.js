@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getKanbanDatePresentation, getKanbanStatusLabel } from './hrKanban.js';
+import {
+  getHistoryGroup, getKanbanDatePresentation, getKanbanStatusLabel, isActiveKanbanStatus,
+} from './hrKanban.js';
 
 test('manager scheduled after a completed technical interview displays the active manager label', () => {
   assert.equal(getKanbanStatusLabel({
@@ -34,4 +36,17 @@ test('uses the applied label and date for a legacy application', () => {
     label: 'Applied',
     date: '2026-08-20T10:00:00',
   });
+});
+
+test('active pipeline keeps offer and excludes terminal statuses', () => {
+  assert.equal(isActiveKanbanStatus('OFFER'), true);
+  assert.equal(isActiveKanbanStatus('REJECTED'), false);
+  assert.equal(isActiveKanbanStatus('HIRED'), false);
+});
+
+test('history groups hired and rejected applications only', () => {
+  assert.equal(getHistoryGroup('HIRED'), 'hired');
+  assert.equal(getHistoryGroup('REJECTED'), 'rejected');
+  assert.equal(getHistoryGroup('OFFER'), null);
+  assert.equal(getKanbanStatusLabel({ status: 'HIRED' }), 'Hired');
 });

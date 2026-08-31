@@ -143,9 +143,28 @@ public class ApplicationService {
             throw new IllegalArgumentException(
                     "Application cannot move from " + currentStatus + " to " + targetStatus);
         }
+        if (currentStatus == ApplicationStatus.HR_INTERVIEW && targetStatus == ApplicationStatus.APPLIED) {
+            if (application.getTaskInstructions() != null || application.getTaskDeadline() != null
+                    || application.getTaskRepoUrl() != null || application.getTaskReviewNotes() != null) {
+                throw new IllegalArgumentException(
+                        "Application cannot return to APPLIED while home task data exists");
+            }
+            if (interviewRepository.existsByApplicationIdAndTypeAndStatusNot(
+                    application.getId(), com.shigoto.backend.entity.InterviewType.HR,
+                    com.shigoto.backend.entity.InterviewStatus.CANCELED)) {
+                throw new IllegalArgumentException(
+                        "Application cannot return to APPLIED while an HR interview is scheduled or completed");
+            }
+        }
         application.transitionTo(targetStatus);
         HrApplicationDetailsDTO result = HrApplicationDetailsDTO.from(applicationRepository.save(application));
-        if (targetStatus == ApplicationStatus.REJECTED) publish(application, NotificationType.APPLICATION_REJECTED);
+        if (targetStatus == ApplicationStatus.REJECTED) {
+            publish(application, NotificationType.APPLICATION_REJECTED);
+        } else if (targetStatus == ApplicationStatus.OFFER) {
+            publish(application, NotificationType.APPLICATION_OFFERED);
+        } else if (targetStatus == ApplicationStatus.HIRED) {
+            publish(application, NotificationType.APPLICATION_HIRED);
+        }
         return result;
     }
 
@@ -219,11 +238,15 @@ public class ApplicationService {
 
     private boolean isAllowedHrTransition(ApplicationStatus currentStatus, ApplicationStatus targetStatus) {
         if (targetStatus == ApplicationStatus.REJECTED) {
-            return currentStatus != ApplicationStatus.OFFER && currentStatus != ApplicationStatus.REJECTED;
+            return currentStatus != ApplicationStatus.OFFER
+                    && currentStatus != ApplicationStatus.HIRED
+                    && currentStatus != ApplicationStatus.REJECTED;
         }
         return switch (currentStatus) {
             case APPLIED -> targetStatus == ApplicationStatus.HR_INTERVIEW;
+            case HR_INTERVIEW -> targetStatus == ApplicationStatus.APPLIED;
             case TECH_INTERVIEW_SCHEDULED -> targetStatus == ApplicationStatus.OFFER;
+            case OFFER -> targetStatus == ApplicationStatus.HIRED;
             default -> false;
         };
     }

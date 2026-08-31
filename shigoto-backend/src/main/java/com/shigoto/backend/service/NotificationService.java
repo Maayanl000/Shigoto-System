@@ -47,8 +47,11 @@ public class NotificationService {
             }
         }
         String jobTitle = application.getJob().getTitle();
+        String candidateFirstName = candidate.getFirstName() == null ? "" : candidate.getFirstName().trim();
         String title = switch (event.type()) {
             case APPLICATION_REJECTED -> "Application update";
+            case APPLICATION_OFFERED -> "Offer update";
+            case APPLICATION_HIRED -> "Hiring update";
             case HOME_TASK_ASSIGNED -> "New home task";
             case HOME_TASK_UPDATED -> "Home task deadline updated";
             case INTERVIEW_SCHEDULED -> "Interview scheduled";
@@ -57,6 +60,12 @@ public class NotificationService {
         };
         String message = switch (event.type()) {
             case APPLICATION_REJECTED -> "Your application for " + jobTitle + " was not selected.";
+            case APPLICATION_OFFERED -> (candidateFirstName.isEmpty() ? "The" : candidateFirstName + ", the")
+                    + " company would like to move forward with an offer for " + jobTitle + ".";
+            case APPLICATION_HIRED -> (candidateFirstName.isEmpty()
+                    ? "Congratulations!" : "Congratulations, " + candidateFirstName + "!")
+                    + " Your application for " + jobTitle
+                    + " has been marked as hired.";
             case HOME_TASK_ASSIGNED -> "A home task was assigned for " + jobTitle + ".";
             case HOME_TASK_UPDATED -> "The home task deadline for " + jobTitle + " was updated"
                     + (application.getTaskDeadline() == null ? "."
