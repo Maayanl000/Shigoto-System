@@ -6,6 +6,7 @@ import GitHubIcon from '@mui/icons-material/GitHub';
 import SaveRoundedIcon from '@mui/icons-material/SaveRounded';
 import PageSkeleton from '../components/PageSkeleton';
 import api from '../services/api';
+import { hasDisplayValue } from '../utils/displayValue';
 
 const statusLabels = {
   APPLIED: 'Applied', HR_INTERVIEW: 'HR interview', TASK_SENT: 'Task sent',
@@ -437,11 +438,11 @@ export default function CandidateDetails() {
               <Stack spacing={1.5}>
                 <Detail label="Name" value={`${record.firstName} ${record.lastName}`} />
                 <Detail label="Email" value={record.email} />
-                <Detail label="Current title" value={record.currentTitle} />
-                <Detail label="Desired role" value={record.desiredRole} />
-                <Detail label="Employment preference" value={employmentLabels[record.employmentType]} />
+                {hasDisplayValue(record.currentTitle) && <Detail label="Current title" value={record.currentTitle} />}
+                {hasDisplayValue(record.desiredRole) && <Detail label="Desired role" value={record.desiredRole} />}
+                {hasDisplayValue(employmentLabels[record.employmentType]) && <Detail label="Employment preference" value={employmentLabels[record.employmentType]} />}
                 <Detail label="Student" value={record.student ? 'Yes' : 'No'} />
-                {record.githubProfileUrl ? <Link href={record.githubProfileUrl} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}><GitHubIcon fontSize="small" />GitHub profile</Link> : <Detail label="GitHub profile" value={null} />}
+                {hasDisplayValue(record.githubProfileUrl) && <Link href={record.githubProfileUrl} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}><GitHubIcon fontSize="small" />GitHub profile</Link>}
                 <GithubAnalysis analysis={record.githubAnalysis} />
               </Stack>
             </CardContent></Card>
@@ -472,8 +473,10 @@ export default function CandidateDetails() {
           <Grid size={{ xs: 12, md: 5 }}>
             <Card sx={{ height: '100%' }}><CardContent>
               <Typography variant="h6" gutterBottom>CV</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Download the CV securely for this application.</Typography>
-              <Button variant="outlined" startIcon={<DownloadRoundedIcon />} onClick={downloadCv} disabled={downloadingCv}>{downloadingCv ? 'Downloading…' : 'Download CV'}</Button>
+              {record.cvAvailable ? <>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Download the CV securely for this application.</Typography>
+                <Button variant="outlined" startIcon={<DownloadRoundedIcon />} onClick={downloadCv} disabled={downloadingCv}>{downloadingCv ? 'Downloading…' : 'Download CV'}</Button>
+              </> : <Typography variant="caption" color="text.secondary">CV not provided</Typography>}
               {cvError && <Alert severity="error" sx={{ mt: 2 }}>{cvError}</Alert>}
             </CardContent></Card>
           </Grid>

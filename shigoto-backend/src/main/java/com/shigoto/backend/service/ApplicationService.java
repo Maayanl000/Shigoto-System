@@ -458,7 +458,8 @@ public class ApplicationService {
                 application.getTaskInstructions(),
                 application.getTaskRepoUrl(),
                 application.getStatus() == ApplicationStatus.REJECTED
-                        ? application.getCandidateFeedback() : null
+                        ? application.getCandidateFeedback() : null,
+                application.getCvUrl() != null && !application.getCvUrl().isBlank()
         );
     }
 

@@ -4,6 +4,7 @@ import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, 
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import PageSkeleton from '../components/PageSkeleton';
 import api from '../services/api';
+import { hasDisplayValue } from '../utils/displayValue';
 
 const show = (value) => value || 'Not provided';
 
@@ -84,9 +85,9 @@ export default function InterviewerCandidateReview() {
           <Typography color="text.secondary">{record.jobTitle} · {record.companyName}</Typography>
           <Stack spacing={1} sx={{ mt: 2 }}>
             <Typography variant="body2">Email: {show(record.email)}</Typography>
-            <Typography variant="body2">Current title: {show(record.currentTitle)}</Typography>
-            <Typography variant="body2">Desired role: {show(record.desiredRole)}</Typography>
-            {record.githubProfileUrl && <Link href={record.githubProfileUrl} target="_blank" rel="noopener noreferrer">GitHub profile</Link>}
+            {hasDisplayValue(record.currentTitle) && <Typography variant="body2">Current title: {record.currentTitle}</Typography>}
+            {hasDisplayValue(record.desiredRole) && <Typography variant="body2">Desired role: {record.desiredRole}</Typography>}
+            {hasDisplayValue(record.githubProfileUrl) && <Link href={record.githubProfileUrl} target="_blank" rel="noopener noreferrer">GitHub profile</Link>}
             <GithubAnalysis analysis={record.githubAnalysis} />
           </Stack>
         </CardContent></Card>

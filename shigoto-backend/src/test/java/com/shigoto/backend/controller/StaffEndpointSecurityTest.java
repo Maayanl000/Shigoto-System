@@ -165,7 +165,7 @@ class StaffEndpointSecurityTest {
         HrApplicationDetailsDTO response = new HrApplicationDetailsDTO(
                 7L, ApplicationStatus.APPLIED, null, "Cover", "Notes", null, null, null, null,
                 2L, "Dana", "Cohen", "dana@example.com", "https://github.com/dana",
-                "Developer", "Backend Engineer", null, false, 3L, "Backend Engineer", "Remote", "Shigoto", null);
+                "Developer", "Backend Engineer", null, false, 3L, "Backend Engineer", "Remote", "Shigoto", true, null);
         when(authService.getAuthenticatedHr(any())).thenReturn(hr);
         when(applicationService.getHrApplicationDetails(7L, hr)).thenReturn(response);
 
@@ -174,6 +174,7 @@ class StaffEndpointSecurityTest {
                 .andExpect(jsonPath("$.applicationId").value(7))
                 .andExpect(jsonPath("$.candidateId").value(2))
                 .andExpect(jsonPath("$.jobTitle").value("Backend Engineer"))
+                .andExpect(jsonPath("$.cvAvailable").value(true))
                 .andExpect(jsonPath("$.cvUrl").doesNotExist())
                 .andExpect(jsonPath("$.password").doesNotExist())
                 .andExpect(jsonPath("$.candidate").doesNotExist())
@@ -461,7 +462,7 @@ class StaffEndpointSecurityTest {
         HrApplicationDetailsDTO response = new HrApplicationDetailsDTO(
                 1L, ApplicationStatus.REJECTED, null, "Cover", "Notes", null, null, null, null,
                 2L, "Dana", "Cohen", "dana@example.com", null, null, null, null, false,
-                3L, "Developer", "Remote", "Wix", null);
+                3L, "Developer", "Remote", "Wix", false, null);
         when(authService.getAuthenticatedHr(any())).thenReturn(hr);
         when(applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.REJECTED, hr))
                 .thenReturn(response);
@@ -473,6 +474,7 @@ class StaffEndpointSecurityTest {
                         .content("{\"status\":\"REJECTED\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("REJECTED"))
+                .andExpect(jsonPath("$.cvAvailable").value(false))
                 .andExpect(jsonPath("$.password").doesNotExist())
                 .andExpect(jsonPath("$.cvUrl").doesNotExist())
                 .andExpect(jsonPath("$.candidate").doesNotExist())
@@ -542,7 +544,8 @@ class StaffEndpointSecurityTest {
         User candidate = User.builder().id(2L).email("candidate@example.com").role(Role.CANDIDATE).build();
         ApplicationResponseDTO response = new ApplicationResponseDTO(
                 1L, 2L, 3L, "Developer", "Shigoto", "Remote", "Cover",
-                ApplicationStatus.TASK_SUBMITTED, null, null, "Build a REST API", "https://github.com/user/repo", null);
+                ApplicationStatus.TASK_SUBMITTED, null, null, "Build a REST API",
+                "https://github.com/user/repo", null, true);
         when(authService.getAuthenticatedCandidate(any())).thenReturn(candidate);
         when(applicationService.submitTask(1L, "https://github.com/user/repo", candidate)).thenReturn(response);
 
@@ -558,6 +561,7 @@ class StaffEndpointSecurityTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"repositoryUrl\":\"https://github.com/user/repo\"}"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.cvAvailable").value(true))
                 .andExpect(jsonPath("$.status").value("TASK_SUBMITTED"));
     }
 

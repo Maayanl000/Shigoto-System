@@ -1,29 +1,24 @@
-import { Link } from 'react-router-dom';
-import { Box, Card, CardActionArea, CardContent, Chip, Container, Grid, LinearProgress, Stack, Typography } from '@mui/material';
+import { Box, Card, CardContent, Chip, Container, Grid, LinearProgress, Stack, Typography } from '@mui/material';
 import PersonOutlineRoundedIcon from '@mui/icons-material/PersonOutlineRounded';
 import ViewKanbanOutlinedIcon from '@mui/icons-material/ViewKanbanOutlined';
 import RateReviewOutlinedIcon from '@mui/icons-material/RateReviewOutlined';
-import ArrowForwardRoundedIcon from '@mui/icons-material/ArrowForwardRounded';
 
 const workspaces = [
   {
     title: 'Candidate workspace',
     description: 'Track applications, recruitment stages, tasks, and interview updates in one focused view.',
-    to: '/candidate',
     icon: <PersonOutlineRoundedIcon />,
     preview: 'candidate',
   },
   {
     title: 'HR workspace',
     description: 'See candidates across a structured hiring pipeline while keeping jobs and actions close at hand.',
-    to: '/hr',
     icon: <ViewKanbanOutlinedIcon />,
     preview: 'hr',
   },
   {
     title: 'Interviewer workspace',
     description: 'Review upcoming interviews, candidate context, and outstanding feedback without extra noise.',
-    to: '/interviewer',
     icon: <RateReviewOutlinedIcon />,
     preview: 'interviewer',
   },
@@ -88,8 +83,7 @@ export default function WorkspaceShowcase() {
           {workspaces.map((workspace) => (
             <Grid key={workspace.title} size={{ xs: 12, md: 4 }}>
               <Card sx={{ height: '100%', bgcolor: 'background.paper' }}>
-                <CardActionArea component={Link} to={workspace.to} aria-label={`Open ${workspace.title} development preview`} sx={{ height: '100%', alignItems: 'stretch' }}>
-                  <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center">
                       <Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, borderRadius: 1.5, bgcolor: 'secondary.light', color: 'secondary.dark' }}>{workspace.icon}</Box>
                       <Chip label="Development preview" size="small" variant="outlined" />
@@ -97,12 +91,8 @@ export default function WorkspaceShowcase() {
                     <Typography variant="h6" component="h3" sx={{ mt: 2.5 }}>{workspace.title}</Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 1, minHeight: 64, lineHeight: 1.65 }}>{workspace.description}</Typography>
                     <Box sx={{ mt: 2.5, p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1.5, bgcolor: '#F1F5F9' }}><WorkspaceMiniature type={workspace.preview} /></Box>
-                    <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 2.25, color: 'secondary.dark' }}>
-                      <Typography variant="body2" fontWeight={800}>Preview workspace</Typography>
-                      <ArrowForwardRoundedIcon fontSize="small" />
-                    </Stack>
-                  </CardContent>
-                </CardActionArea>
+                  <Typography variant="body2" fontWeight={800} color="text.secondary" sx={{ mt: 2.25 }}>Preview workspace</Typography>
+                </CardContent>
               </Card>
             </Grid>
           ))}

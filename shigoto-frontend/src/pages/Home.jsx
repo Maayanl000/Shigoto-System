@@ -233,7 +233,7 @@ export default function Home() {
                 const existingApplication = applicationByJobId.get(String(job.id));
                 return (
                 <Grid size={{ xs: 12, md: 6, lg: 4 }} key={job.id}>
-                  <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', bgcolor: existingApplication ? '#f2f8f8' : 'background.paper', borderColor: existingApplication ? 'rgba(8,127,140,0.38)' : 'divider', boxShadow: existingApplication ? '0 6px 20px rgba(8,127,140,0.08)' : undefined, transition: 'transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease', '&:hover': { transform: 'translateY(-3px)', borderColor: 'secondary.main', boxShadow: '0 12px 30px rgba(16,35,61,0.08)' } }}>
+                  <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', bgcolor: existingApplication ? '#e4eeee' : 'background.paper', borderColor: existingApplication ? 'rgba(8,127,140,0.42)' : 'divider', boxShadow: existingApplication ? '0 6px 20px rgba(8,127,140,0.08)' : undefined, transition: 'transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease', '&:hover': { transform: 'translateY(-3px)', borderColor: 'secondary.main', boxShadow: '0 12px 30px rgba(16,35,61,0.08)' } }}>
                     <CardContent>
                       <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2} sx={{ mb: 2.5 }}>
                         <Chip label={job.department || 'Technology'} color="secondary" size="small" sx={{ bgcolor: 'secondary.light', color: 'secondary.dark' }} />

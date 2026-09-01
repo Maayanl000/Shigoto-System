@@ -29,6 +29,7 @@ public record HrApplicationDetailsDTO(
         String jobTitle,
         String location,
         String companyName,
+        boolean cvAvailable,
         GithubAnalysisDTO githubAnalysis
 ) {
     public static HrApplicationDetailsDTO from(Application application) {
@@ -42,7 +43,8 @@ public record HrApplicationDetailsDTO(
                 candidate.getLastName(), candidate.getEmail(), candidate.getGithubProfileUrl(),
                 candidate.getCurrentTitle(), candidate.getDesiredRole(), candidate.getEmploymentType(),
                 candidate.isStudent(), job.getId(), job.getTitle(), job.getLocation(),
-                job.getCompany().getName(), GithubAnalysisDTO.from(candidate.getGithubData())
+                job.getCompany().getName(), application.getCvUrl() != null && !application.getCvUrl().isBlank(),
+                GithubAnalysisDTO.from(candidate.getGithubData())
         );
     }
 }

@@ -385,9 +385,9 @@ export default function CandidateApplicationDetails() {
                     <Typography variant="body2"><strong>Applied:</strong> {appliedAt || 'Date unavailable'}</Typography>
                   </Stack>
                   {cvDownloadError && <Alert severity="warning" sx={{ mt: 2 }}>{cvDownloadError}</Alert>}
-                  <Button onClick={handleCvDownload} startIcon={<DownloadOutlinedIcon />} variant="outlined" disabled={downloadingCv} fullWidth sx={{ mt: 2 }}>
+                  {application.cvAvailable ? <Button onClick={handleCvDownload} startIcon={<DownloadOutlinedIcon />} variant="outlined" disabled={downloadingCv} fullWidth sx={{ mt: 2 }}>
                     {downloadingCv ? 'Downloading…' : 'Download CV'}
-                  </Button>
+                  </Button> : <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>CV not provided</Typography>}
                 </CardContent>
               </Card>
             </Stack>
