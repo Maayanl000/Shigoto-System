@@ -165,7 +165,7 @@ class StaffEndpointSecurityTest {
         HrApplicationDetailsDTO response = new HrApplicationDetailsDTO(
                 7L, ApplicationStatus.APPLIED, null, "Cover", "Notes", null, null, null, null,
                 2L, "Dana", "Cohen", "dana@example.com", "https://github.com/dana",
-                "Developer", "Backend Engineer", null, false, 3L, "Backend Engineer", "Remote", "Shigoto");
+                "Developer", "Backend Engineer", null, false, 3L, "Backend Engineer", "Remote", "Shigoto", null);
         when(authService.getAuthenticatedHr(any())).thenReturn(hr);
         when(applicationService.getHrApplicationDetails(7L, hr)).thenReturn(response);
 
@@ -461,7 +461,7 @@ class StaffEndpointSecurityTest {
         HrApplicationDetailsDTO response = new HrApplicationDetailsDTO(
                 1L, ApplicationStatus.REJECTED, null, "Cover", "Notes", null, null, null, null,
                 2L, "Dana", "Cohen", "dana@example.com", null, null, null, null, false,
-                3L, "Developer", "Remote", "Wix");
+                3L, "Developer", "Remote", "Wix", null);
         when(authService.getAuthenticatedHr(any())).thenReturn(hr);
         when(applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.REJECTED, hr))
                 .thenReturn(response);

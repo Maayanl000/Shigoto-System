@@ -9,6 +9,8 @@ import com.shigoto.backend.entity.User;
 import com.shigoto.backend.exception.DuplicateEmailException;
 import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.UserRepository;
+import com.shigoto.backend.repository.GithubDataRepository;
+import com.shigoto.backend.util.GithubProfileUrlParser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -18,10 +20,9 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Locale;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.regex.Pattern;
 
 @Service
@@ -37,6 +38,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
+    private final GithubDataRepository githubDataRepository;
 
     public AuthenticatedUserResponseDTO registerCandidate(RegisterRequestDTO request) {
         if (request == null) {
@@ -129,6 +131,7 @@ public class AuthService {
         return user;
     }
 
+    @Transactional
     public AuthenticatedUserResponseDTO updateCandidateProfile(
             CandidateProfileUpdateRequestDTO request,
             Authentication authentication) {
@@ -136,9 +139,12 @@ public class AuthService {
             throw new IllegalArgumentException("Profile details are required");
         }
         User candidate = getAuthenticatedCandidate(authentication);
+        String githubProfileUrl = normalizeGithubProfileUrl(request.githubProfileUrl());
+        String previousUsername = GithubProfileUrlParser.extractUsername(candidate.getGithubProfileUrl()).orElse(null);
+        String updatedUsername = GithubProfileUrlParser.extractUsername(githubProfileUrl).orElse(null);
         candidate.setFirstName(requireName(request.firstName(), "First name"));
         candidate.setLastName(requireName(request.lastName(), "Last name"));
-        candidate.setGithubProfileUrl(normalizeGithubProfileUrl(request.githubProfileUrl()));
+        candidate.setGithubProfileUrl(githubProfileUrl);
         candidate.setCurrentTitle(normalizeOptionalProfileText(request.currentTitle(), "Current title"));
         candidate.setDesiredRole(normalizeOptionalProfileText(request.desiredRole(), "Desired role"));
         if (request.employmentType() == null) {
@@ -146,6 +152,12 @@ public class AuthService {
         }
         candidate.setEmploymentType(request.employmentType());
         candidate.setStudent(request.student());
+        if (!java.util.Objects.equals(previousUsername == null ? null : previousUsername.toLowerCase(Locale.ROOT),
+                updatedUsername == null ? null : updatedUsername.toLowerCase(Locale.ROOT))
+                && candidate.getGithubData() != null) {
+            githubDataRepository.delete(candidate.getGithubData());
+            candidate.setGithubData(null);
+        }
         return AuthenticatedUserResponseDTO.from(userRepository.save(candidate));
     }
 
@@ -177,22 +189,10 @@ public class AuthService {
     private String normalizeGithubProfileUrl(String value) {
         if (value == null || value.isBlank()) return null;
         String trimmed = value.trim();
-        try {
-            URI uri = new URI(trimmed);
-            String scheme = uri.getScheme();
-            String host = uri.getHost();
-            boolean validScheme = "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
-            boolean validHost = "github.com".equalsIgnoreCase(host)
-                    || "www.github.com".equalsIgnoreCase(host);
-            boolean hasUsername = java.util.Arrays.stream(uri.getPath().split("/"))
-                    .anyMatch(segment -> !segment.isBlank());
-            if (!validScheme || !validHost || !hasUsername) {
-                throw new IllegalArgumentException("GitHub profile URL is invalid");
-            }
-            return trimmed;
-        } catch (URISyntaxException ex) {
+        if (GithubProfileUrlParser.extractUsername(trimmed).isEmpty()) {
             throw new IllegalArgumentException("GitHub profile URL is invalid");
         }
+        return trimmed;
     }
 
     private String normalizeAndValidateEmail(String value) {

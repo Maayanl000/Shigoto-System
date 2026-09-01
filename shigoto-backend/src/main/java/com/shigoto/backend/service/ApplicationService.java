@@ -11,14 +11,20 @@ import com.shigoto.backend.entity.JobStatus;
 import com.shigoto.backend.entity.Role;
 import com.shigoto.backend.entity.TaskReviewDecision;
 import com.shigoto.backend.entity.User;
+import com.shigoto.backend.entity.GithubData;
+import com.shigoto.backend.entity.GithubAnalysisStatus;
 import com.shigoto.backend.exception.DuplicateApplicationException;
 import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.ApplicationRepository;
 import com.shigoto.backend.repository.JobRepository;
 import com.shigoto.backend.repository.InterviewRepository;
 import com.shigoto.backend.repository.UserRepository;
+import com.shigoto.backend.repository.GithubDataRepository;
 import com.shigoto.backend.messaging.CandidateNotificationEvent;
 import com.shigoto.backend.messaging.NotificationEventPublisher;
+import com.shigoto.backend.messaging.GithubAnalysisEventPublisher;
+import com.shigoto.backend.messaging.GithubAnalysisRequestedEvent;
+import com.shigoto.backend.util.GithubProfileUrlParser;
 import com.shigoto.backend.entity.NotificationType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -45,6 +51,8 @@ public class ApplicationService {
     private final CvStorageService cvStorageService;
     private final NotificationEventPublisher notificationEventPublisher;
     private final InterviewRepository interviewRepository;
+    private final GithubAnalysisEventPublisher githubAnalysisEventPublisher;
+    private final GithubDataRepository githubDataRepository;
 
     @Transactional
     public ApplicationResponseDTO createApplication(User candidate, Long jobId, String coverLetter, MultipartFile cv) {
@@ -71,7 +79,9 @@ public class ApplicationService {
                     .cvUrl(storageKey)
                     .coverLetter(coverLetter)
                     .build();
-            return toResponseDTO(applicationRepository.saveAndFlush(application));
+            Application saved = applicationRepository.saveAndFlush(application);
+            requestGithubAnalysis(saved);
+            return toResponseDTO(saved);
         } catch (DataIntegrityViolationException ex) {
             deleteStoredCvAfterFailedApplication(storageKey);
             throw new DuplicateApplicationException("Candidate has already applied for this job");
@@ -463,5 +473,31 @@ public class ApplicationService {
     private void publish(Application application, NotificationType type) {
         notificationEventPublisher.publishAfterCommit(CandidateNotificationEvent.of(type,
                 application.getCandidate().getId(), application.getId(), null));
+    }
+
+    private void requestGithubAnalysis(Application application) {
+        User candidate = application.getCandidate();
+        GithubProfileUrlParser.extractUsername(candidate.getGithubProfileUrl()).ifPresent(username -> {
+            GithubAnalysisRequestedEvent event = GithubAnalysisRequestedEvent.of(
+                    candidate.getId(), application.getId(), username);
+            GithubData data = candidate.getGithubData();
+            if (data == null) {
+                data = GithubData.builder().candidate(candidate).username(username)
+                        .status(GithubAnalysisStatus.PENDING).lastEventId(event.eventId()).build();
+                candidate.setGithubData(data);
+                githubDataRepository.save(data);
+            } else if (!data.getUsername().equalsIgnoreCase(username)
+                    || data.getStatus() == GithubAnalysisStatus.FAILED) {
+                data.setUsername(username);
+                data.setStatus(GithubAnalysisStatus.PENDING);
+                data.setPublicRepositoryCount(null);
+                data.setTopLanguages(new java.util.ArrayList<>());
+                data.setLatestPushAt(null);
+                data.setAnalyzedAt(null);
+                data.setLastEventId(event.eventId());
+                githubDataRepository.save(data);
+            }
+            githubAnalysisEventPublisher.publishAfterCommit(event);
+        });
     }
 }

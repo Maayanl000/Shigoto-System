@@ -10,6 +10,7 @@ import com.shigoto.backend.entity.Company;
 import com.shigoto.backend.entity.User;
 import com.shigoto.backend.exception.DuplicateEmailException;
 import com.shigoto.backend.repository.UserRepository;
+import com.shigoto.backend.repository.GithubDataRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -32,13 +33,15 @@ class AuthServiceTest {
     private AuthenticationManager authenticationManager;
     private BCryptPasswordEncoder passwordEncoder;
     private AuthService authService;
+    private GithubDataRepository githubDataRepository;
 
     @BeforeEach
     void setUp() {
         userRepository = mock(UserRepository.class);
         authenticationManager = mock(AuthenticationManager.class);
         passwordEncoder = new BCryptPasswordEncoder(4);
-        authService = new AuthService(userRepository, passwordEncoder, authenticationManager);
+        githubDataRepository = mock(GithubDataRepository.class);
+        authService = new AuthService(userRepository, passwordEncoder, authenticationManager, githubDataRepository);
     }
 
     @Test

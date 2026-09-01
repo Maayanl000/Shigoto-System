@@ -28,6 +28,10 @@ public class User {
 
     private String githubProfileUrl;
 
+    @OneToOne(mappedBy = "candidate", fetch = FetchType.LAZY)
+    @JsonIgnore
+    private GithubData githubData;
+
     @Column(length = 100)
     private String currentTitle;
 

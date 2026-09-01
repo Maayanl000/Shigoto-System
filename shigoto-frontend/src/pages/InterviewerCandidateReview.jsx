@@ -1,11 +1,38 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Alert, Box, Button, Card, CardContent, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Link, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Link, Stack, TextField, Typography } from '@mui/material';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import PageSkeleton from '../components/PageSkeleton';
 import api from '../services/api';
 
 const show = (value) => value || 'Not provided';
+
+const formatDate = (value) => {
+  if (!value) return 'Not provided';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Not provided' : date.toLocaleString();
+};
+
+function GithubAnalysis({ analysis }) {
+  if (!analysis) return null;
+  return <Box sx={{ pt: 1.5, mt: 0.5, borderTop: 1, borderColor: 'divider' }}>
+    <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
+      <Typography variant="subtitle2">GitHub analysis</Typography>
+      <Chip size="small" variant="outlined" label={analysis.status.replaceAll('_', ' ')} />
+    </Stack>
+    {analysis.topLanguages?.length > 0 && <Box sx={{ mt: 1, minWidth: 0 }}>
+      <Typography variant="caption" color="text.secondary">Languages</Typography>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, width: '100%', minWidth: 0, mt: 0.5 }}>
+        {analysis.topLanguages.map((language) => <Chip key={language} size="small" label={language} />)}
+      </Box>
+    </Box>}
+    <Stack spacing={0.5} sx={{ mt: 1 }}>
+      <Typography variant="caption" color="text.secondary">Public repositories: {analysis.publicRepositoryCount ?? 'Not provided'}</Typography>
+      <Typography variant="caption" color="text.secondary">Latest public push: {formatDate(analysis.latestPushAt)}</Typography>
+      <Typography variant="caption" color="text.secondary">Analyzed: {formatDate(analysis.analyzedAt)}</Typography>
+    </Stack>
+  </Box>;
+}
 
 export default function InterviewerCandidateReview() {
   const { applicationId } = useParams();
@@ -60,6 +87,7 @@ export default function InterviewerCandidateReview() {
             <Typography variant="body2">Current title: {show(record.currentTitle)}</Typography>
             <Typography variant="body2">Desired role: {show(record.desiredRole)}</Typography>
             {record.githubProfileUrl && <Link href={record.githubProfileUrl} target="_blank" rel="noopener noreferrer">GitHub profile</Link>}
+            <GithubAnalysis analysis={record.githubAnalysis} />
           </Stack>
         </CardContent></Card>
         {(record.taskInstructions || record.taskRepoUrl) && <Card><CardContent>

@@ -23,6 +23,8 @@ import com.shigoto.backend.repository.JobRepository;
 import com.shigoto.backend.repository.UserRepository;
 import com.shigoto.backend.repository.InterviewRepository;
 import com.shigoto.backend.messaging.NotificationEventPublisher;
+import com.shigoto.backend.messaging.GithubAnalysisEventPublisher;
+import com.shigoto.backend.repository.GithubDataRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
@@ -54,6 +56,8 @@ class ApplicationServiceTest {
     private NotificationEventPublisher notificationEventPublisher;
     private InterviewRepository interviewRepository;
     private UserRepository userRepository;
+    private GithubAnalysisEventPublisher githubAnalysisEventPublisher;
+    private GithubDataRepository githubDataRepository;
 
     @BeforeEach
     void setUp() {
@@ -62,9 +66,12 @@ class ApplicationServiceTest {
         notificationEventPublisher = mock(NotificationEventPublisher.class);
         interviewRepository = mock(InterviewRepository.class);
         userRepository = mock(UserRepository.class);
+        githubAnalysisEventPublisher = mock(GithubAnalysisEventPublisher.class);
+        githubDataRepository = mock(GithubDataRepository.class);
         applicationService = new ApplicationService(
                 applicationRepository, userRepository, mock(JobRepository.class), cvStorageService,
-                notificationEventPublisher, interviewRepository);
+                notificationEventPublisher, interviewRepository, githubAnalysisEventPublisher,
+                githubDataRepository);
     }
 
     @Test
@@ -157,18 +164,24 @@ class ApplicationServiceTest {
     @Test
     void createsApplicationForAuthenticatedCandidateAndPreservesDuplicateProtection() {
         User candidate = candidate(3L);
+        candidate.setGithubProfileUrl("https://github.com/octocat");
         Job job = Job.builder().id(2L).title("Developer").location("Remote")
                 .company(Company.builder().name("Example Company").build())
                 .status(JobStatus.OPEN).build();
         JobRepository jobRepository = mock(JobRepository.class);
         applicationService = new ApplicationService(
                 applicationRepository, mock(UserRepository.class), jobRepository, cvStorageService,
-                notificationEventPublisher, interviewRepository);
+                notificationEventPublisher, interviewRepository, githubAnalysisEventPublisher,
+                githubDataRepository);
         when(jobRepository.findById(2L)).thenReturn(Optional.of(job));
         when(applicationRepository.existsByCandidateIdAndJobId(3L, 2L)).thenReturn(false);
         when(cvStorageService.store(any())).thenReturn("123e4567-e89b-12d3-a456-426614174000.pdf");
         when(applicationRepository.saveAndFlush(any(Application.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+                .thenAnswer(invocation -> {
+                    Application saved = invocation.getArgument(0);
+                    saved.setId(7L);
+                    return saved;
+                });
         MockMultipartFile cv = validCv();
 
         var created = applicationService.createApplication(candidate, 2L, "Cover note", cv);
@@ -177,6 +190,11 @@ class ApplicationServiceTest {
         assertEquals("Cover note", created.coverLetter());
         verify(applicationRepository).saveAndFlush(org.mockito.ArgumentMatchers.argThat(application ->
                 "123e4567-e89b-12d3-a456-426614174000.pdf".equals(application.getCvUrl())));
+        verify(githubAnalysisEventPublisher).publishAfterCommit(argThat(event ->
+                event.candidateUserId().equals(3L) && event.applicationId().equals(7L)
+                        && event.githubUsername().equals("octocat")));
+        verify(githubDataRepository).save(argThat(data -> data.getCandidate() == candidate
+                && data.getStatus() == com.shigoto.backend.entity.GithubAnalysisStatus.PENDING));
 
         when(applicationRepository.existsByCandidateIdAndJobId(3L, 2L)).thenReturn(true);
         assertThrows(DuplicateApplicationException.class,
@@ -190,7 +208,8 @@ class ApplicationServiceTest {
         JobRepository jobRepository = mock(JobRepository.class);
         applicationService = new ApplicationService(
                 applicationRepository, mock(UserRepository.class), jobRepository, cvStorageService,
-                notificationEventPublisher, interviewRepository);
+                notificationEventPublisher, interviewRepository, githubAnalysisEventPublisher,
+                githubDataRepository);
         String storageKey = "123e4567-e89b-12d3-a456-426614174000.pdf";
         when(jobRepository.findById(2L)).thenReturn(Optional.of(job));
         when(cvStorageService.store(any())).thenReturn(storageKey);

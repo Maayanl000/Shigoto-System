@@ -42,6 +42,31 @@ function Detail({ label, value }) {
   return <Box><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2" sx={{ mt: 0.25 }}>{display(value)}</Typography></Box>;
 }
 
+function GithubAnalysis({ analysis }) {
+  if (!analysis) return null;
+  return (
+    <Box sx={{ pt: 1.5, mt: 0.5, borderTop: 1, borderColor: 'divider' }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
+        <Typography variant="subtitle2">GitHub analysis</Typography>
+        <Chip size="small" variant="outlined" label={analysis.status.replaceAll('_', ' ')} />
+      </Stack>
+      {analysis.topLanguages?.length > 0 && (
+        <Box sx={{ mt: 1, minWidth: 0 }}>
+          <Typography variant="caption" color="text.secondary">Languages</Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, width: '100%', minWidth: 0, mt: 0.5 }}>
+            {analysis.topLanguages.map((language) => <Chip key={language} size="small" label={language} />)}
+          </Box>
+        </Box>
+      )}
+      <Stack spacing={0.5} sx={{ mt: 1 }}>
+        <Typography variant="caption" color="text.secondary">Public repositories: {display(analysis.publicRepositoryCount)}</Typography>
+        <Typography variant="caption" color="text.secondary">Latest public push: {formatDate(analysis.latestPushAt)}</Typography>
+        <Typography variant="caption" color="text.secondary">Analyzed: {formatDate(analysis.analyzedAt)}</Typography>
+      </Stack>
+    </Box>
+  );
+}
+
 export default function CandidateDetails() {
   const { applicationId } = useParams();
   const [record, setRecord] = useState(null);
@@ -417,6 +442,7 @@ export default function CandidateDetails() {
                 <Detail label="Employment preference" value={employmentLabels[record.employmentType]} />
                 <Detail label="Student" value={record.student ? 'Yes' : 'No'} />
                 {record.githubProfileUrl ? <Link href={record.githubProfileUrl} target="_blank" rel="noopener noreferrer" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}><GitHubIcon fontSize="small" />GitHub profile</Link> : <Detail label="GitHub profile" value={null} />}
+                <GithubAnalysis analysis={record.githubAnalysis} />
               </Stack>
             </CardContent></Card>
           </Grid>

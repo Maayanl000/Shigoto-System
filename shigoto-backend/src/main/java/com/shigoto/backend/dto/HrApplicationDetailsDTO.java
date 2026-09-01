@@ -28,7 +28,8 @@ public record HrApplicationDetailsDTO(
         Long jobId,
         String jobTitle,
         String location,
-        String companyName
+        String companyName,
+        GithubAnalysisDTO githubAnalysis
 ) {
     public static HrApplicationDetailsDTO from(Application application) {
         var candidate = application.getCandidate();
@@ -41,7 +42,7 @@ public record HrApplicationDetailsDTO(
                 candidate.getLastName(), candidate.getEmail(), candidate.getGithubProfileUrl(),
                 candidate.getCurrentTitle(), candidate.getDesiredRole(), candidate.getEmploymentType(),
                 candidate.isStudent(), job.getId(), job.getTitle(), job.getLocation(),
-                job.getCompany().getName()
+                job.getCompany().getName(), GithubAnalysisDTO.from(candidate.getGithubData())
         );
     }
 }
