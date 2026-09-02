@@ -147,9 +147,6 @@ public class AuthService {
         candidate.setGithubProfileUrl(githubProfileUrl);
         candidate.setCurrentTitle(normalizeOptionalProfileText(request.currentTitle(), "Current title"));
         candidate.setDesiredRole(normalizeOptionalProfileText(request.desiredRole(), "Desired role"));
-        if (request.employmentType() == null) {
-            throw new IllegalArgumentException("Employment preference is required");
-        }
         candidate.setEmploymentType(request.employmentType());
         candidate.setStudent(request.student());
         if (!java.util.Objects.equals(previousUsername == null ? null : previousUsername.toLowerCase(Locale.ROOT),

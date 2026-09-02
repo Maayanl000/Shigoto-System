@@ -66,11 +66,6 @@ export default function CandidateProfile() {
       setError('Current title and desired role must be 100 characters or fewer.');
       return;
     }
-    if (!employmentTypes.some((option) => option.value === values.employmentType)) {
-      setError('Select an employment preference.');
-      return;
-    }
-
     setSaving(true);
     setError('');
     setSuccess(false);
@@ -81,7 +76,7 @@ export default function CandidateProfile() {
         githubProfileUrl: values.githubProfileUrl.trim(),
         currentTitle: values.currentTitle.trim() || null,
         desiredRole: values.desiredRole.trim() || null,
-        employmentType: values.employmentType,
+        employmentType: values.employmentType || null,
         student: values.student,
       });
       setValues({
@@ -172,7 +167,8 @@ export default function CandidateProfile() {
                 <TextField label="Desired role" value={values.desiredRole} onChange={handleChange('desiredRole')} inputProps={{ maxLength: 100 }} disabled={saving} fullWidth />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField select label="Employment preference" value={values.employmentType} onChange={handleChange('employmentType')} required disabled={saving} fullWidth>
+                <TextField select label="Employment preference" value={values.employmentType} onChange={handleChange('employmentType')} disabled={saving} fullWidth>
+                  <MenuItem value="">No preference</MenuItem>
                   {employmentTypes.map((option) => (
                     <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
                   ))}

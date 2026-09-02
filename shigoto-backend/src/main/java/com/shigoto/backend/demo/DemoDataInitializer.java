@@ -80,6 +80,13 @@ public class DemoDataInitializer implements CommandLineRunner {
                 "Build high-performance systems software with modern C++.", "Haifa");
         Job googleFrontend = findOrCreateJob(google, "Frontend Developer",
                 "Build accessible, high-quality web interfaces used at global scale.", "Tel Aviv");
+        findOrCreateJob(nvidia, "Student Software Developer",
+                "Develop Java and Python tools for GPU developer workflows in a mentored student role.", "Yokneam");
+        findOrCreateJob(microsoft, "Java Backend Student",
+                "Build and test Java backend services for cloud products alongside experienced engineers.", "Herzliya");
+        findOrCreateJob(google, "Software Engineering Student",
+                "Contribute to production software and developer tooling as part of a mentored student team.",
+                "Tel Aviv");
 
         LocalDateTime base = LocalDate.now().atTime(9, 0);
 

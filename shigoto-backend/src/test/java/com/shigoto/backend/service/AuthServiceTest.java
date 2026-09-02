@@ -170,7 +170,7 @@ class AuthServiceTest {
         when(userRepository.save(candidate)).thenReturn(candidate);
         CandidateProfileUpdateRequestDTO request = new CandidateProfileUpdateRequestDTO(
                 " Dana ", " Cohen ", " https://github.com/dana ",
-                " Junior Java Developer ", " Backend Developer ", EmploymentType.FULL_TIME, true);
+                " Junior Java Developer ", " Backend Developer ", EmploymentType.STUDENT, false);
 
         var response = authService.updateCandidateProfile(request, authentication);
 
@@ -180,11 +180,33 @@ class AuthServiceTest {
         assertEquals("https://github.com/dana", response.githubProfileUrl());
         assertEquals("Junior Java Developer", response.currentTitle());
         assertEquals("Backend Developer", response.desiredRole());
-        assertEquals(EmploymentType.FULL_TIME, response.employmentType());
-        assertTrue(response.student());
+        assertEquals(EmploymentType.STUDENT, response.employmentType());
+        assertFalse(response.student());
         verify(userRepository).save(candidate);
         assertFalse(Arrays.stream(CandidateProfileUpdateRequestDTO.class.getRecordComponents())
                 .anyMatch(component -> component.getName().toLowerCase().contains("id")));
+    }
+
+    @Test
+    void authenticatedCandidateCanClearEmploymentPreferenceIndependentlyOfStudentStatus() {
+        User candidate = User.builder().id(9L).firstName("Dana").lastName("Cohen")
+                .email("dana@example.com").role(Role.CANDIDATE)
+                .employmentType(EmploymentType.FULL_TIME).student(false).build();
+        Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
+                "dana@example.com", null, java.util.List.of());
+        when(userRepository.findByEmail("dana@example.com")).thenReturn(Optional.of(candidate));
+        when(userRepository.save(candidate)).thenReturn(candidate);
+        CandidateProfileUpdateRequestDTO request = new CandidateProfileUpdateRequestDTO(
+                "Dana", "Cohen", "https://github.com/dana",
+                null, null, null, true);
+
+        var response = authService.updateCandidateProfile(request, authentication);
+
+        assertNull(response.employmentType());
+        assertTrue(response.student());
+        assertNull(candidate.getEmploymentType());
+        assertTrue(candidate.isStudent());
+        verify(userRepository).save(candidate);
     }
 
     @Test

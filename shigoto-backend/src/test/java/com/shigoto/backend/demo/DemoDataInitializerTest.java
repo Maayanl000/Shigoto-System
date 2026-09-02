@@ -7,6 +7,7 @@ import com.shigoto.backend.entity.Interview;
 import com.shigoto.backend.entity.InterviewStatus;
 import com.shigoto.backend.entity.InterviewType;
 import com.shigoto.backend.entity.Job;
+import com.shigoto.backend.entity.JobStatus;
 import com.shigoto.backend.entity.Role;
 import com.shigoto.backend.entity.User;
 import com.shigoto.backend.repository.ApplicationRepository;
@@ -98,7 +99,7 @@ class DemoDataInitializerTest {
 
         assertEquals(3, companies.size());
         assertEquals(14, users.size());
-        assertEquals(5, jobs.size());
+        assertEquals(8, jobs.size());
         assertEquals(8, applications.size());
         assertEquals(2, interviews.size());
 
@@ -128,6 +129,10 @@ class DemoDataInitializerTest {
         assertEquals(1, countUsers(Role.HR, "Google"));
         assertEquals(1, countUsers(Role.INTERVIEWER, "Google"));
         assertEquals(5, users.values().stream().filter(user -> user.getRole() == Role.CANDIDATE).count());
+        assertEquals("Yokneam", jobs.get("NVIDIA|Student Software Developer").getLocation());
+        assertEquals("Herzliya", jobs.get("Microsoft|Java Backend Student").getLocation());
+        assertEquals("Tel Aviv", jobs.get("Google|Software Engineering Student").getLocation());
+        assertTrue(jobs.values().stream().allMatch(job -> job.getStatus() == JobStatus.OPEN));
 
         assertTrue(applications.values().stream()
                 .map(Application::getStatus)
@@ -172,7 +177,7 @@ class DemoDataInitializerTest {
         verify(companyRepository, times(3)).save(any(Company.class));
         verify(userRepository, times(14)).save(any(User.class));
         verify(passwordEncoder, times(14)).encode(DemoDataInitializer.DEMO_PASSWORD);
-        verify(jobRepository, times(5)).save(any(Job.class));
+        verify(jobRepository, times(8)).save(any(Job.class));
         verify(applicationRepository, times(8)).save(any(Application.class));
         verify(interviewRepository, times(2)).save(any(Interview.class));
     }
