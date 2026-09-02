@@ -16,8 +16,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(properties = "shigoto.demo-data.enabled=false")
 @Transactional
@@ -66,6 +69,16 @@ class EnumConstraintIntegrationTest {
             entityManager.flush();
             assertNotNull(notification.getId());
         }
+    }
+
+    @Test
+    void applicationSubmittedPostgresqlConstraintPatchIsTracked() throws Exception {
+        String patch = Files.readString(Path.of(
+                "database", "patches", "2026-09-01-application-submitted-notification.sql"));
+
+        assertTrue(patch.contains("'APPLICATION_SUBMITTED'"));
+        assertTrue(patch.contains("DROP CONSTRAINT IF EXISTS notifications_type_check"));
+        assertTrue(patch.contains("ADD CONSTRAINT notifications_type_check"));
     }
 
     private User candidate(String email) {

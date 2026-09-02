@@ -24,6 +24,7 @@ ALTER TABLE public.notifications
 ALTER TABLE public.notifications
     ADD CONSTRAINT notifications_type_check
     CHECK (type IN (
+        'APPLICATION_SUBMITTED',
         'APPLICATION_REJECTED',
         'APPLICATION_OFFERED',
         'APPLICATION_HIRED',

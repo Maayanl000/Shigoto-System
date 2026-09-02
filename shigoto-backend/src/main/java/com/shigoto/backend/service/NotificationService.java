@@ -49,6 +49,7 @@ public class NotificationService {
         String jobTitle = application.getJob().getTitle();
         String candidateFirstName = candidate.getFirstName() == null ? "" : candidate.getFirstName().trim();
         String title = switch (event.type()) {
+            case APPLICATION_SUBMITTED -> "Application received";
             case APPLICATION_REJECTED -> "Application update";
             case APPLICATION_OFFERED -> "Offer update";
             case APPLICATION_HIRED -> "Hiring update";
@@ -59,6 +60,8 @@ public class NotificationService {
             case INTERVIEW_CANCELED -> "Interview canceled";
         };
         String message = switch (event.type()) {
+            case APPLICATION_SUBMITTED -> "Your application for " + jobTitle + " at "
+                    + application.getJob().getCompany().getName() + " was submitted successfully.";
             case APPLICATION_REJECTED -> "Your application for " + jobTitle + " was not selected.";
             case APPLICATION_OFFERED -> (candidateFirstName.isEmpty() ? "The" : candidateFirstName + ", the")
                     + " company would like to move forward with an offer for " + jobTitle + ".";

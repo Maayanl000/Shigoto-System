@@ -190,6 +190,11 @@ class ApplicationServiceTest {
         assertEquals("Cover note", created.coverLetter());
         verify(applicationRepository).saveAndFlush(org.mockito.ArgumentMatchers.argThat(application ->
                 "123e4567-e89b-12d3-a456-426614174000.pdf".equals(application.getCvUrl())));
+        verify(notificationEventPublisher).publishAfterCommit(argThat(event ->
+                event.type() == NotificationType.APPLICATION_SUBMITTED
+                        && event.candidateUserId().equals(3L)
+                        && event.applicationId().equals(7L)
+                        && event.interviewId() == null));
         verify(githubAnalysisEventPublisher).publishAfterCommit(argThat(event ->
                 event.candidateUserId().equals(3L) && event.applicationId().equals(7L)
                         && event.githubUsername().equals("octocat")));
@@ -199,6 +204,7 @@ class ApplicationServiceTest {
         when(applicationRepository.existsByCandidateIdAndJobId(3L, 2L)).thenReturn(true);
         assertThrows(DuplicateApplicationException.class,
                 () -> applicationService.createApplication(candidate, 2L, "Cover note", cv));
+        verify(notificationEventPublisher, org.mockito.Mockito.times(1)).publishAfterCommit(any());
     }
 
     @Test
@@ -220,6 +226,7 @@ class ApplicationServiceTest {
                 () -> applicationService.createApplication(candidate, 2L, "Cover", validCv()));
 
         verify(cvStorageService).delete(storageKey);
+        verify(notificationEventPublisher, never()).publishAfterCommit(any());
     }
 
     @Test

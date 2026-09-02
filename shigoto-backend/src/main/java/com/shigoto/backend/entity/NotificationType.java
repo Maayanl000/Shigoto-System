@@ -1,6 +1,7 @@
 package com.shigoto.backend.entity;
 
 public enum NotificationType {
+    APPLICATION_SUBMITTED,
     APPLICATION_REJECTED,
     APPLICATION_OFFERED,
     APPLICATION_HIRED,

@@ -54,6 +54,11 @@ public class CandidateEmailRenderer {
     private EventContent eventContent(NotificationType type, Application application, Interview interview,
                                       String jobTitle) {
         return switch (type) {
+            case APPLICATION_SUBMITTED -> new EventContent("Application received", "Thank you for applying",
+                    "We received your application for <strong>" + jobTitle + "</strong> at <strong>"
+                            + companyName(application) + "</strong>.<br><br>"
+                            + "We will keep you updated as your application progresses.",
+                    "", "");
             case HOME_TASK_ASSIGNED -> new EventContent("Home task assigned", "Home task assigned",
                     "A home task was assigned for <strong>" + jobTitle + "</strong>.",
                     details(row("Task instructions", multiline(application.getTaskInstructions()))
@@ -75,6 +80,11 @@ public class CandidateEmailRenderer {
                     "", "");
             case APPLICATION_REJECTED -> rejectionContent(application, jobTitle);
         };
+    }
+
+    private String companyName(Application application) {
+        return application.getJob().getCompany() == null
+                ? "the company" : escape(application.getJob().getCompany().getName());
     }
 
     private EventContent interviewContent(String heading, String message, Interview interview, boolean joinAllowed) {

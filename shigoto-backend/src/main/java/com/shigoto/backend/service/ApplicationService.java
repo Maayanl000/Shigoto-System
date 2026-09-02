@@ -80,6 +80,7 @@ public class ApplicationService {
                     .coverLetter(coverLetter)
                     .build();
             Application saved = applicationRepository.saveAndFlush(application);
+            publish(saved, NotificationType.APPLICATION_SUBMITTED);
             requestGithubAnalysis(saved);
             return toResponseDTO(saved);
         } catch (DataIntegrityViolationException ex) {

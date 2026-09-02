@@ -1,9 +1,6 @@
--- Prevent concurrent writes from assigning one interviewer to multiple non-canceled interviews at the same time.
-CREATE UNIQUE INDEX IF NOT EXISTS uk_interviews_active_interviewer_slot
-    ON public.interviews (interviewer_id, scheduled_at)
-    WHERE status <> 'CANCELED';
+-- Add the application-submission notification to existing PostgreSQL databases.
+BEGIN;
 
--- Hibernate does not update an existing enum check constraint when Java enum values change.
 ALTER TABLE public.notifications
     DROP CONSTRAINT IF EXISTS notifications_type_check;
 
@@ -20,3 +17,5 @@ ALTER TABLE public.notifications
         'INTERVIEW_RESCHEDULED',
         'INTERVIEW_CANCELED'
     ));
+
+COMMIT;

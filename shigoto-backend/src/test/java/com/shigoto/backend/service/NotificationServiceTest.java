@@ -107,6 +107,27 @@ class NotificationServiceTest {
         }
     }
 
+    @Test void applicationSubmissionPersistsCandidateSafeNotification() {
+        User candidate = User.builder().id(3L).role(Role.CANDIDATE).build();
+        Application application = Application.builder().id(7L).candidate(candidate)
+                .job(Job.builder().title("Backend Developer")
+                        .company(Company.builder().name("Shigoto Labs").build()).build())
+                .hrNotes("PRIVATE_HR_SENTINEL").taskReviewNotes("PRIVATE_REVIEW_SENTINEL").build();
+        when(users.findById(3L)).thenReturn(Optional.of(candidate));
+        when(applications.findById(7L)).thenReturn(Optional.of(application));
+
+        service.receive(CandidateNotificationEvent.of(
+                NotificationType.APPLICATION_SUBMITTED, 3L, 7L, null));
+
+        ArgumentCaptor<Notification> saved = ArgumentCaptor.forClass(Notification.class);
+        verify(notifications).saveAndFlush(saved.capture());
+        assertEquals("Application received", saved.getValue().getTitle());
+        assertEquals("Your application for Backend Developer at Shigoto Labs was submitted successfully.",
+                saved.getValue().getMessage());
+        assertFalse(saved.getValue().getMessage().contains("PRIVATE_HR_SENTINEL"));
+        assertFalse(saved.getValue().getMessage().contains("PRIVATE_REVIEW_SENTINEL"));
+    }
+
     @Test void mineIsNewestFirstAndReadIsRecipientScopedAndIdempotent() {
         User candidate = User.builder().id(3L).role(Role.CANDIDATE).build();
         Notification newest = notification(2L, candidate, LocalDateTime.now());

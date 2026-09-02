@@ -144,6 +144,24 @@ class CandidateEmailServiceTest {
         assertFalse(hiredHtml.contains("start date"));
     }
 
+    @Test void applicationSubmissionEmailUsesBrandedConfirmationContent() throws Exception {
+        job.setCompany(Company.builder().name("Shigoto Labs").build());
+
+        service.receive(CandidateNotificationEvent.of(
+                NotificationType.APPLICATION_SUBMITTED, 1L, 3L, null));
+
+        MimeMessage submitted = sentMessage();
+        assertEquals("Application received", submitted.getSubject());
+        String html = htmlBody(submitted);
+        assertTrue(html.contains("Thank you for applying"));
+        assertTrue(html.contains("We received your application for <strong>Backend Engineer</strong> at "
+                + "<strong>Shigoto Labs</strong>."));
+        assertTrue(html.contains("We will keep you updated as your application progresses."));
+        assertTrue(html.contains("View application"));
+        assertFalse(html.contains("PRIVATE_HR"));
+        assertFalse(html.contains("PRIVATE_TASK_REVIEW"));
+    }
+
     @Test void blankNameAndInvalidFrontendUrlUseFallbackAndOmitCta() throws Exception {
         candidate.setFirstName(" ");
         ReflectionTestUtils.setField(renderer, "frontendUrl", "javascript:alert(1)");
