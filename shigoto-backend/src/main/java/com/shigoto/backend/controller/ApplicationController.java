@@ -96,15 +96,17 @@ public class ApplicationController {
         }
         User candidate = authService.getAuthenticatedCandidate(authentication);
         return ResponseEntity.ok(
-                applicationService.submitTask(applicationId, request.repositoryUrl(), candidate));
+                applicationService.submitTask(
+                        applicationId, request.repositoryUrl(), request.version(), candidate));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteApplication(
             @PathVariable Long id,
+            @RequestParam Long version,
             Authentication authentication) {
         User hr = authService.getAuthenticatedHr(authentication);
-        applicationService.deleteApplication(id, hr);
+        applicationService.deleteApplication(id, version, hr);
         return ResponseEntity.noContent().build();
     }
 }

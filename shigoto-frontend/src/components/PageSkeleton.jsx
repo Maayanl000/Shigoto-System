@@ -17,7 +17,6 @@ export default function PageSkeleton({ title, description, sections, children })
             </Typography>
           )}
         </Box>
-        <Chip label="UI preview" size="small" variant="outlined" sx={{ mt: 0.5, color: 'text.secondary', bgcolor: 'background.paper' }} />
       </Box>
 
       {children || (

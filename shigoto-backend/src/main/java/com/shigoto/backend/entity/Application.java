@@ -59,6 +59,10 @@ public class Application {
     @Column(columnDefinition = "TEXT")
     private String taskReviewNotes;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "task_reviewer_id")
+    private User taskReviewer;
+
     @Column(columnDefinition = "TEXT")
     private String candidateFeedback;
 

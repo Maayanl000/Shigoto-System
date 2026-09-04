@@ -1,3 +1,3 @@
 package com.shigoto.backend.dto;
 
-public record InterviewerTaskReviewNotesRequestDTO(String taskReviewNotes) {}
+public record InterviewerTaskReviewNotesRequestDTO(String taskReviewNotes, Long version) {}

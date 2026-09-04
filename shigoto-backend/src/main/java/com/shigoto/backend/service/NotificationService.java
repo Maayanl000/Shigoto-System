@@ -22,6 +22,7 @@ public class NotificationService {
     private final UserRepository userRepository;
     private final ApplicationRepository applicationRepository;
     private final InterviewRepository interviewRepository;
+    private final NotificationWriter notificationWriter;
 
     @JmsListener(destination = "shigoto.notifications")
     @Transactional
@@ -78,8 +79,8 @@ public class NotificationService {
             case INTERVIEW_CANCELED -> "Your interview for " + jobTitle + " was canceled.";
         };
         try {
-            notificationRepository.saveAndFlush(Notification.builder().eventId(event.eventId()).recipient(candidate)
-                    .type(event.type()).title(title).message(message).applicationId(application.getId())
+            notificationWriter.save(Notification.builder().eventId(event.eventId()).recipient(candidate)
+                    .type(event.type()).title(title).message(limit(message, 500)).applicationId(application.getId())
                     .interviewId(event.interviewId()).createdAt(event.occurredAt()).build());
         } catch (DataIntegrityViolationException duplicateDelivery) {
             log.debug("Notification event {} was already persisted", event.eventId());
@@ -104,5 +105,9 @@ public class NotificationService {
 
     private void requireCandidate(User user) {
         if (user == null || user.getRole() != Role.CANDIDATE) throw new AccessDeniedException("Candidate access is required");
+    }
+
+    private String limit(String value, int maximumLength) {
+        return value.length() <= maximumLength ? value : value.substring(0, maximumLength);
     }
 }

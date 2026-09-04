@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Locale;
+import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
 @Service
@@ -70,8 +71,10 @@ public class AuthService {
         try {
             return AuthenticatedUserResponseDTO.from(userRepository.save(user));
         } catch (DataIntegrityViolationException ex) {
-            // Preserve a clear 409 response if two registrations race past the pre-check.
-            throw new DuplicateEmailException("User with this email already exists");
+            if (userRepository.existsByEmail(email)) {
+                throw new DuplicateEmailException("User with this email already exists");
+            }
+            throw ex;
         }
     }
 
@@ -161,6 +164,9 @@ public class AuthService {
     private String normalizeOptionalProfileText(String value, String fieldName) {
         if (value == null || value.isBlank()) return null;
         String trimmed = value.trim();
+        if (trimmed.length() > 255) {
+            throw new IllegalArgumentException(fieldName + " must be at most 255 characters");
+        }
         if (trimmed.length() > 100) {
             throw new IllegalArgumentException(fieldName + " must not exceed 100 characters");
         }
@@ -177,6 +183,9 @@ public class AuthService {
             throw new IllegalArgumentException(fieldName + " is required");
         }
         String trimmed = value.trim();
+        if (trimmed.length() > 255) {
+            throw new IllegalArgumentException("GitHub profile URL must be at most 255 characters");
+        }
         if (trimmed.codePoints().anyMatch(Character::isDigit)) {
             throw new IllegalArgumentException(fieldName + " must not contain digits");
         }
@@ -197,6 +206,9 @@ public class AuthService {
             throw new IllegalArgumentException("Email is required");
         }
         String normalized = value.trim().toLowerCase(Locale.ROOT);
+        if (normalized.length() > 255) {
+            throw new IllegalArgumentException("Email must be at most 255 characters");
+        }
         if (!EMAIL_PATTERN.matcher(normalized).matches()) {
             throw new IllegalArgumentException("Email is invalid");
         }
@@ -211,6 +223,9 @@ public class AuthService {
             throw new IllegalArgumentException(
                     "Password must be at least " + MINIMUM_PASSWORD_LENGTH + " characters"
             );
+        }
+        if (password.getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new IllegalArgumentException("Password must be at most 72 UTF-8 bytes");
         }
     }
 }

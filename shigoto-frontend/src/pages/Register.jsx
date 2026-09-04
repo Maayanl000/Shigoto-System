@@ -4,6 +4,7 @@ import { Alert, Box, Button, Card, CardContent, Chip, Divider, Grid, Stack, Text
 import PersonAddOutlinedIcon from '@mui/icons-material/PersonAddOutlined';
 import { useAuth } from '../auth/authContext';
 import { isValidGithubProfile } from '../utils/githubProfile';
+import { registrationErrorMessage } from '../utils/validationFeedback';
 
 export default function Register() {
   const { register } = useAuth();
@@ -51,9 +52,7 @@ export default function Register() {
       const returnPath = typeof location.state?.from === 'string' ? location.state.from : '/candidate';
       navigate(returnPath, { replace: true });
     } catch (requestError) {
-      setError(requestError.response?.status === 409
-        ? 'An account with this email already exists.'
-        : 'We could not create your account. Please try again.');
+      setError(registrationErrorMessage(requestError));
     } finally {
       setSubmitting(false);
     }
@@ -77,11 +76,11 @@ export default function Register() {
           </Stack>
           {error && <Alert severity="error">{error}</Alert>}
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12, sm: 6 }}><TextField label="First name" value={values.firstName} onChange={handleChange('firstName')} autoComplete="given-name" required disabled={submitting} fullWidth /></Grid>
-            <Grid size={{ xs: 12, sm: 6 }}><TextField label="Last name" value={values.lastName} onChange={handleChange('lastName')} autoComplete="family-name" required disabled={submitting} fullWidth /></Grid>
+            <Grid size={{ xs: 12, sm: 6 }}><TextField label="First name" value={values.firstName} onChange={handleChange('firstName')} inputProps={{ maxLength: 255 }} autoComplete="given-name" required disabled={submitting} fullWidth /></Grid>
+            <Grid size={{ xs: 12, sm: 6 }}><TextField label="Last name" value={values.lastName} onChange={handleChange('lastName')} inputProps={{ maxLength: 255 }} autoComplete="family-name" required disabled={submitting} fullWidth /></Grid>
           </Grid>
-          <TextField label="Email" type="email" value={values.email} onChange={handleChange('email')} autoComplete="email" required disabled={submitting} fullWidth />
-          <TextField label="GitHub Profile URL" type="url" value={values.githubProfileUrl} onChange={handleChange('githubProfileUrl')} placeholder="https://github.com/username" autoComplete="url" required disabled={submitting} fullWidth />
+          <TextField label="Email" type="email" value={values.email} onChange={handleChange('email')} inputProps={{ maxLength: 255 }} autoComplete="email" required disabled={submitting} fullWidth />
+          <TextField label="GitHub Profile URL" type="url" value={values.githubProfileUrl} onChange={handleChange('githubProfileUrl')} inputProps={{ maxLength: 255 }} placeholder="https://github.com/username" autoComplete="url" required disabled={submitting} fullWidth />
           <TextField label="Password" type="password" value={values.password} onChange={handleChange('password')} helperText="Use at least 8 characters." autoComplete="new-password" required disabled={submitting} fullWidth />
           <Button type="submit" variant="contained" disabled={submitting} fullWidth>{submitting ? 'Creating account…' : 'Create account'}</Button>
           <Divider />

@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
 import org.postgresql.util.PSQLException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,12 +58,13 @@ public class InterviewService {
 
         Application application = applicationRepository.findByIdAndJobCompany(applicationId, hr.getCompany())
                 .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
+        requireExpectedVersion(application, request.applicationVersion());
         if (application.getStatus() == ApplicationStatus.OFFER
                 || application.getStatus() == ApplicationStatus.HIRED
                 || application.getStatus() == ApplicationStatus.REJECTED) {
             throw new IllegalArgumentException("Cannot schedule an interview for a terminal application");
         }
-        validateInterviewStage(application.getStatus(), request.type());
+        validateInterviewStage(application, request.type());
 
         User interviewer = userRepository.findByIdAndCompany(request.interviewerId(), hr.getCompany())
                 .orElseThrow(() -> new ResourceNotFoundException("Interviewer not found"));
@@ -116,6 +118,7 @@ public class InterviewService {
         }
         String meetingLink = validateMeetingLink(request.meetingLink());
         Interview interview = findHrCompanyInterview(interviewId, hr);
+        requireExpectedVersion(interview, request.version());
         if (interview.getStatus() != InterviewStatus.SCHEDULED) {
             throw new IllegalArgumentException("Only a scheduled interview can be rescheduled");
         }
@@ -142,8 +145,9 @@ public class InterviewService {
     }
 
     @Transactional
-    public HrScheduledInterviewResponseDTO cancelInterview(Long interviewId, User hr) {
+    public HrScheduledInterviewResponseDTO cancelInterview(Long interviewId, Long expectedVersion, User hr) {
         Interview interview = findHrCompanyInterview(interviewId, hr);
+        requireExpectedVersion(interview, expectedVersion);
         if (interview.getStatus() != InterviewStatus.SCHEDULED) {
             throw new IllegalArgumentException("Only a scheduled interview can be canceled");
         }
@@ -155,10 +159,12 @@ public class InterviewService {
                         application.getId(), InterviewType.TECHNICAL, InterviewStatus.SCHEDULED, interviewId)) {
             application.transitionTo(hasApprovedHomeTask(application)
                     ? ApplicationStatus.TASK_APPROVED
-                    : ApplicationStatus.HR_INTERVIEW);
-            applicationRepository.save(application);
+                    : hasHomeTask(application)
+                            ? ApplicationStatus.TASK_SENT
+                            : ApplicationStatus.HR_INTERVIEW);
+            applicationRepository.saveAndFlush(application);
         }
-        Interview saved = interviewRepository.save(interview);
+        Interview saved = interviewRepository.saveAndFlush(interview);
         publish(saved, NotificationType.INTERVIEW_CANCELED);
         return HrScheduledInterviewResponseDTO.from(saved);
     }
@@ -209,31 +215,33 @@ public class InterviewService {
 
     @Transactional
     public InterviewerInterviewResponseDTO submitInterviewerFeedback(
-            Long interviewId, String feedback, User interviewer) {
+            Long interviewId, String feedback, Long expectedVersion, User interviewer) {
         requireInterviewer(interviewer);
         String validatedFeedback = validateFeedback(feedback);
         Interview interview = interviewRepository.findByIdAndInterviewerId(interviewId, interviewer.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Interview not found"));
+        requireExpectedVersion(interview, expectedVersion);
         if (interview.getStatus() != InterviewStatus.SCHEDULED) {
             throw new IllegalArgumentException("Only a scheduled interview can receive feedback");
         }
         interview.setFeedback(validatedFeedback);
         interview.setStatus(InterviewStatus.COMPLETED);
-        return InterviewerInterviewResponseDTO.from(interviewRepository.save(interview));
+        return InterviewerInterviewResponseDTO.from(interviewRepository.saveAndFlush(interview));
     }
 
     @Transactional
     public InterviewerInterviewResponseDTO updateInterviewerNotes(
-            Long interviewId, String notes, User interviewer) {
+            Long interviewId, String notes, Long expectedVersion, User interviewer) {
         requireInterviewer(interviewer);
         Interview interview = interviewRepository.findByIdAndInterviewerId(interviewId, interviewer.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Interview not found"));
+        requireExpectedVersion(interview, expectedVersion);
         String normalized = notes == null ? "" : notes.trim();
         if (normalized.length() > 10000) {
             throw new IllegalArgumentException("Private notes must be at most 10000 characters");
         }
         interview.setInterviewerNotes(normalized.isEmpty() ? null : normalized);
-        return InterviewerInterviewResponseDTO.from(interviewRepository.save(interview));
+        return InterviewerInterviewResponseDTO.from(interviewRepository.saveAndFlush(interview));
     }
 
     @Transactional(readOnly = true)
@@ -242,7 +250,12 @@ public class InterviewService {
         Application application = applicationRepository.findByIdAndJobCompany(applicationId, interviewer.getCompany())
                 .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
         boolean assigned = interviewRepository.existsByApplicationIdAndInterviewerId(applicationId, interviewer.getId());
-        boolean reviewableTask = application.getStatus() == ApplicationStatus.TASK_SUBMITTED;
+        boolean reviewableTask = application.getStatus() == ApplicationStatus.TASK_SUBMITTED
+                && application.getTaskReviewer() != null
+                && Objects.equals(application.getTaskReviewer().getId(), interviewer.getId());
+        if (application.getStatus() == ApplicationStatus.TASK_SUBMITTED && !reviewableTask) {
+            throw new ResourceNotFoundException("Application not found");
+        }
         if (!assigned && !reviewableTask) {
             throw new ResourceNotFoundException("Application not found");
         }
@@ -308,7 +321,8 @@ public class InterviewService {
                 .orElseThrow(() -> new ResourceNotFoundException("Interview not found"));
     }
 
-    private void validateInterviewStage(ApplicationStatus status, InterviewType type) {
+    private void validateInterviewStage(Application application, InterviewType type) {
+        ApplicationStatus status = application.getStatus();
         if (type == InterviewType.HR && status != ApplicationStatus.APPLIED) {
             throw new IllegalArgumentException("HR interview can only be scheduled for an applied application");
         }
@@ -317,6 +331,11 @@ public class InterviewService {
                 && status != ApplicationStatus.TASK_APPROVED) {
             throw new IllegalArgumentException(
                     "Technical interview can only be scheduled after the HR interview or an approved home task");
+        }
+        if (type == InterviewType.TECHNICAL && status == ApplicationStatus.HR_INTERVIEW
+                && hasHomeTask(application)) {
+            throw new IllegalArgumentException(
+                    "Technical interview cannot be scheduled until the home task is approved");
         }
         if (type == InterviewType.MANAGER && status != ApplicationStatus.TECH_INTERVIEW_SCHEDULED) {
             throw new IllegalArgumentException("Manager interview requires a scheduled technical interview stage");
@@ -327,11 +346,19 @@ public class InterviewService {
         return application.getTaskRepoUrl() != null && !application.getTaskRepoUrl().isBlank();
     }
 
+    private boolean hasHomeTask(Application application) {
+        return application.getTaskInstructions() != null || application.getTaskDeadline() != null
+                || application.getTaskRepoUrl() != null || application.getTaskReviewer() != null;
+    }
+
     private String validateMeetingLink(String value) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("Meeting link is required");
         }
         String link = value.trim();
+        if (link.length() > 255) {
+            throw new IllegalArgumentException("Meeting link must be at most 255 characters");
+        }
         try {
             URI uri = new URI(link);
             boolean validScheme = "http".equalsIgnoreCase(uri.getScheme())
@@ -342,6 +369,24 @@ public class InterviewService {
             return link;
         } catch (URISyntaxException ex) {
             throw new IllegalArgumentException("Meeting link must be a valid HTTP or HTTPS URL");
+        }
+    }
+
+    private void requireExpectedVersion(Application application, Long expectedVersion) {
+        if (expectedVersion == null) {
+            throw new IllegalArgumentException("Application version is required");
+        }
+        if (!expectedVersion.equals(application.getVersion())) {
+            throw new ObjectOptimisticLockingFailureException(Application.class, application.getId());
+        }
+    }
+
+    private void requireExpectedVersion(Interview interview, Long expectedVersion) {
+        if (expectedVersion == null) {
+            throw new IllegalArgumentException("Interview version is required");
+        }
+        if (!expectedVersion.equals(interview.getVersion())) {
+            throw new ObjectOptimisticLockingFailureException(Interview.class, interview.getId());
         }
     }
 

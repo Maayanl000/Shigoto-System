@@ -5,6 +5,7 @@ import com.shigoto.backend.messaging.CandidateNotificationEvent;
 import com.shigoto.backend.repository.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.mockito.ArgumentCaptor;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -19,13 +20,15 @@ class NotificationServiceTest {
     private ApplicationRepository applications;
     private InterviewRepository interviews;
     private NotificationService service;
+    private NotificationWriter writer;
 
     @BeforeEach void setUp() {
         notifications = mock(NotificationRepository.class);
         users = mock(UserRepository.class);
         applications = mock(ApplicationRepository.class);
         interviews = mock(InterviewRepository.class);
-        service = new NotificationService(notifications, users, applications, interviews);
+        writer = mock(NotificationWriter.class);
+        service = new NotificationService(notifications, users, applications, interviews, writer);
     }
 
     @Test void listenerCreatesSafeCandidateNotificationWithReferences() {
@@ -41,7 +44,7 @@ class NotificationServiceTest {
         service.receive(event);
 
         ArgumentCaptor<Notification> saved = ArgumentCaptor.forClass(Notification.class);
-        verify(notifications).saveAndFlush(saved.capture());
+        verify(writer).save(saved.capture());
         assertEquals(candidate, saved.getValue().getRecipient());
         assertEquals(7L, saved.getValue().getApplicationId());
         assertEquals(9L, saved.getValue().getInterviewId());
@@ -52,12 +55,27 @@ class NotificationServiceTest {
     @Test void listenerSafelyIgnoresMissingReferenceAndDuplicateDelivery() {
         var missing = CandidateNotificationEvent.of(NotificationType.HOME_TASK_ASSIGNED, 3L, 7L, null);
         service.receive(missing);
-        verify(notifications, never()).saveAndFlush(any());
+        verify(writer, never()).save(any());
 
         clearInvocations(users, applications, interviews);
         when(notifications.existsByEventId(missing.eventId())).thenReturn(true);
         service.receive(missing);
         verifyNoInteractions(users, applications, interviews);
+    }
+
+    @Test void listenerSwallowsDuplicateRaceFromIsolatedWriter() {
+        User candidate = User.builder().id(3L).role(Role.CANDIDATE).build();
+        Application application = Application.builder().id(7L).candidate(candidate)
+                .job(Job.builder().title("Backend Developer")
+                        .company(Company.builder().name("Shigoto").build()).build()).build();
+        var event = CandidateNotificationEvent.of(NotificationType.APPLICATION_SUBMITTED, 3L, 7L, null);
+        when(users.findById(3L)).thenReturn(Optional.of(candidate));
+        when(applications.findById(7L)).thenReturn(Optional.of(application));
+        doThrow(new DataIntegrityViolationException("duplicate event"))
+                .when(writer).save(any(Notification.class));
+
+        assertDoesNotThrow(() -> service.receive(event));
+        verify(writer).save(any(Notification.class));
     }
 
     @Test void homeTaskUpdatePersistsSafeDeadlineWording() {
@@ -72,7 +90,7 @@ class NotificationServiceTest {
         service.receive(CandidateNotificationEvent.of(NotificationType.HOME_TASK_UPDATED, 3L, 7L, null));
 
         ArgumentCaptor<Notification> saved = ArgumentCaptor.forClass(Notification.class);
-        verify(notifications).saveAndFlush(saved.capture());
+        verify(writer).save(saved.capture());
         assertEquals("Home task deadline updated", saved.getValue().getTitle());
         assertTrue(saved.getValue().getMessage().contains("Backend Developer"));
         assertTrue(saved.getValue().getMessage().contains("2026-09-08T17:00"));
@@ -92,7 +110,7 @@ class NotificationServiceTest {
         service.receive(CandidateNotificationEvent.of(NotificationType.APPLICATION_HIRED, 3L, 7L, null));
 
         ArgumentCaptor<Notification> saved = ArgumentCaptor.forClass(Notification.class);
-        verify(notifications, times(2)).saveAndFlush(saved.capture());
+        verify(writer, times(2)).save(saved.capture());
         Notification offered = saved.getAllValues().get(0);
         Notification hired = saved.getAllValues().get(1);
         assertEquals("Offer update", offered.getTitle());
@@ -120,7 +138,7 @@ class NotificationServiceTest {
                 NotificationType.APPLICATION_SUBMITTED, 3L, 7L, null));
 
         ArgumentCaptor<Notification> saved = ArgumentCaptor.forClass(Notification.class);
-        verify(notifications).saveAndFlush(saved.capture());
+        verify(writer).save(saved.capture());
         assertEquals("Application received", saved.getValue().getTitle());
         assertEquals("Your application for Backend Developer at Shigoto Labs was submitted successfully.",
                 saved.getValue().getMessage());

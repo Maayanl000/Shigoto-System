@@ -8,6 +8,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import PageSkeleton from '../components/PageSkeleton';
 import ActionDialog from '../components/ActionDialog';
 import api from '../services/api';
+import { jobSaveErrorMessage } from '../utils/validationFeedback';
 
 const emptyForm = { title: '', description: '', location: '', status: 'OPEN' };
 
@@ -76,6 +77,7 @@ export default function JobManagement() {
       description: job.description,
       location: job.location,
       status: job.status,
+      version: job.version,
     });
     setFormError('');
     setDialog('edit');
@@ -103,12 +105,13 @@ export default function JobManagement() {
           location: form.location,
         });
       } else {
-        await api.put(`/hr/jobs/${selectedJob.id}`, form);
+        await api.put(`/hr/jobs/${selectedJob.id}`, { ...form, version: selectedJob.version });
       }
       setDialog(null);
       await loadJobs();
     } catch (requestError) {
-      setFormError(errorMessage(requestError, 'Could not save the job.'));
+      if (requestError.response?.status === 409) await loadJobs();
+      setFormError(jobSaveErrorMessage(requestError));
     } finally {
       setSaving(false);
     }
@@ -199,8 +202,8 @@ export default function JobManagement() {
 function JobFields({ form, updateField, showStatus }) {
   return (
     <>
-      <TextField label="Job title" name="title" value={form.title} onChange={updateField} required fullWidth />
-      <TextField label="Location" name="location" value={form.location} onChange={updateField} required fullWidth />
+      <TextField label="Job title" name="title" value={form.title} onChange={updateField} inputProps={{ maxLength: 255 }} required fullWidth />
+      <TextField label="Location" name="location" value={form.location} onChange={updateField} inputProps={{ maxLength: 255 }} required fullWidth />
       <TextField label="Role description / requirements" name="description" value={form.description} onChange={updateField} multiline minRows={4} required fullWidth />
       {showStatus && (
         <FormControl fullWidth>

@@ -3,10 +3,10 @@ import PageSkeleton from '../components/PageSkeleton';
 
 export default function InterviewFeedback() {
   return (
-    <PageSkeleton title="Interview Feedback" description="Feedback form skeleton. Responses are not saved or submitted yet.">
+    <PageSkeleton title="Interview Feedback" description="Record structured feedback for an assigned interview.">
       <Card sx={{ maxWidth: 880 }}>
         <CardContent sx={{ display: 'grid', gap: 2.5 }}>
-          <Alert severity="info" icon={false}>Preview only — interview feedback cannot be saved or submitted yet.</Alert>
+          <Alert severity="info" icon={false}>Open an assigned interview from your workspace to submit feedback.</Alert>
           <Typography variant="h6">Evaluation</Typography>
           <FormControl fullWidth disabled>
             <InputLabel id="recommendation-label">Recommendation</InputLabel>

@@ -25,6 +25,7 @@ import org.postgresql.util.PSQLException;
 import org.postgresql.util.ServerErrorMessage;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -133,6 +134,24 @@ class InterviewServiceTest {
     }
 
     @Test
+    void technicalInterviewCannotBypassExistingUnapprovedHomeTask() {
+        Company company = company(1L, "Wix");
+        Application application = application(company, ApplicationStatus.HR_INTERVIEW);
+        application.setTaskInstructions("Build an API");
+        application.setTaskDeadline(LocalDateTime.now().plusDays(2));
+        when(applicationRepository.findByIdAndJobCompany(7L, company)).thenReturn(Optional.of(application));
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> interviewService.scheduleInterview(
+                        7L, validRequest(5L, InterviewType.TECHNICAL), hr(company)));
+
+        assertEquals("Technical interview cannot be scheduled until the home task is approved",
+                failure.getMessage());
+        verify(userRepository, never()).findByIdAndCompany(any(), any());
+        verify(interviewRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
     void technicalAndManagerInterviewSequencingRemainsControlled() {
         Company company = company(1L, "Wix");
         Application applied = application(company, ApplicationStatus.APPLIED);
@@ -144,7 +163,7 @@ class InterviewServiceTest {
         when(applicationRepository.findByIdAndJobCompany(7L, company)).thenReturn(Optional.of(hrInterview));
         assertThrows(IllegalArgumentException.class, () -> interviewService.scheduleInterview(
                 7L, validRequest(5L, InterviewType.MANAGER), hr(company)));
-        verify(interviewRepository, never()).save(any());
+        verify(interviewRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -153,7 +172,7 @@ class InterviewServiceTest {
         when(applicationRepository.findByIdAndJobCompany(7L, company)).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () -> interviewService.scheduleInterview(
                 7L, validRequest(5L, InterviewType.TECHNICAL), hr(company)));
-        verify(interviewRepository, never()).save(any());
+        verify(interviewRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -182,12 +201,33 @@ class InterviewServiceTest {
     void pastDateAndInvalidMeetingUrlAreRejected() {
         Company company = company(1L, "Wix");
         HrInterviewScheduleRequestDTO past = new HrInterviewScheduleRequestDTO(
-                5L, InterviewType.TECHNICAL, LocalDateTime.now().minusMinutes(1), "https://meet.example.com/1");
+                5L, InterviewType.TECHNICAL, LocalDateTime.now().minusMinutes(1), "https://meet.example.com/1", 0L);
         assertThrows(IllegalArgumentException.class, () -> interviewService.scheduleInterview(7L, past, hr(company)));
         HrInterviewScheduleRequestDTO invalidLink = new HrInterviewScheduleRequestDTO(
-                5L, InterviewType.TECHNICAL, LocalDateTime.now().plusDays(1), "javascript:alert(1)");
+                5L, InterviewType.TECHNICAL, LocalDateTime.now().plusDays(1), "javascript:alert(1)", 0L);
         assertThrows(IllegalArgumentException.class, () ->
                 interviewService.scheduleInterview(7L, invalidLink, hr(company)));
+        String oversizedLink = "https://example.com/" + "a".repeat(256 - "https://example.com/".length());
+        HrInterviewScheduleRequestDTO oversized = new HrInterviewScheduleRequestDTO(
+                5L, InterviewType.TECHNICAL, LocalDateTime.now().plusDays(1), oversizedLink, 0L);
+        assertThrows(IllegalArgumentException.class, () ->
+                interviewService.scheduleInterview(7L, oversized, hr(company)));
+    }
+
+    @Test
+    void meetingLinkAtDatabaseMaximumIsAccepted() {
+        Company company = company(1L, "Wix");
+        User interviewer = interviewer(5L, company);
+        Application application = application(company, ApplicationStatus.HR_INTERVIEW);
+        String maximumLink = "https://example.com/" + "a".repeat(255 - "https://example.com/".length());
+        HrInterviewScheduleRequestDTO request = new HrInterviewScheduleRequestDTO(
+                5L, InterviewType.TECHNICAL, LocalDateTime.now().plusDays(1), maximumLink, 0L);
+        stubScopedEntities(company, application, interviewer, request);
+        when(interviewRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = interviewService.scheduleInterview(7L, request, hr(company));
+
+        assertEquals(255, response.meetingLink().length());
     }
 
     @Test
@@ -200,7 +240,7 @@ class InterviewServiceTest {
             assertThrows(IllegalArgumentException.class, () -> interviewService.scheduleInterview(
                     7L, validRequest(5L, InterviewType.TECHNICAL), hr(company)));
         }
-        verify(interviewRepository, never()).save(any());
+        verify(interviewRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -234,11 +274,12 @@ class InterviewServiceTest {
         when(interviewRepository.saveAndFlush(interview)).thenReturn(interview);
 
         var response = interviewService.rescheduleInterview(9L,
-                new HrInterviewRescheduleRequestDTO(6L, newTime, " https://meet.example.com/new "), hr(company));
+                new HrInterviewRescheduleRequestDTO(6L, newTime, " https://meet.example.com/new ", 0L), hr(company));
 
         assertEquals(6L, response.interviewerId());
         assertEquals(newTime, response.scheduledAt());
         assertEquals("https://meet.example.com/new", response.meetingLink());
+        assertEquals(ApplicationStatus.TECH_INTERVIEW_SCHEDULED, response.applicationStatus());
         verify(interviewRepository).saveAndFlush(interview);
     }
 
@@ -297,10 +338,10 @@ class InterviewServiceTest {
         Company company = company(1L, "Wix");
         assertThrows(IllegalArgumentException.class, () -> interviewService.rescheduleInterview(9L,
                 new HrInterviewRescheduleRequestDTO(5L, LocalDateTime.now().minusMinutes(1),
-                        "https://meet.example.com/1"), hr(company)));
+                        "https://meet.example.com/1", 0L), hr(company)));
         assertThrows(IllegalArgumentException.class, () -> interviewService.rescheduleInterview(9L,
                 new HrInterviewRescheduleRequestDTO(5L, LocalDateTime.now().plusDays(1),
-                        "not-a-url"), hr(company)));
+                        "not-a-url", 0L), hr(company)));
     }
 
     @Test
@@ -320,13 +361,13 @@ class InterviewServiceTest {
         Company company = company(1L, "Wix");
         Interview interview = scheduledInterview(company, InterviewStatus.SCHEDULED);
         when(interviewRepository.findByIdAndApplicationJobCompany(9L, company)).thenReturn(Optional.of(interview));
-        when(interviewRepository.save(interview)).thenReturn(interview);
+        when(interviewRepository.saveAndFlush(interview)).thenReturn(interview);
 
-        var response = interviewService.cancelInterview(9L, hr(company));
+        var response = interviewService.cancelInterview(9L, 0L, hr(company));
 
         assertEquals(InterviewStatus.CANCELED, response.status());
         assertEquals(ApplicationStatus.TASK_APPROVED, interview.getApplication().getStatus());
-        verify(interviewRepository).save(interview);
+        verify(interviewRepository).saveAndFlush(interview);
         verify(interviewRepository, never()).delete(any());
     }
 
@@ -338,12 +379,25 @@ class InterviewServiceTest {
         interview.getApplication().setTaskDeadline(null);
         interview.getApplication().setTaskRepoUrl(null);
         when(interviewRepository.findByIdAndApplicationJobCompany(9L, company)).thenReturn(Optional.of(interview));
-        when(interviewRepository.save(interview)).thenReturn(interview);
+        when(interviewRepository.saveAndFlush(interview)).thenReturn(interview);
 
-        var response = interviewService.cancelInterview(9L, hr(company));
+        var response = interviewService.cancelInterview(9L, 0L, hr(company));
 
         assertEquals(InterviewStatus.CANCELED, response.status());
         assertEquals(ApplicationStatus.HR_INTERVIEW, response.applicationStatus());
+    }
+
+    @Test
+    void cancelingLegacyTechnicalInterviewWithUnsubmittedTaskRestoresTaskSentStage() {
+        Company company = company(1L, "Wix");
+        Interview interview = scheduledInterview(company, InterviewStatus.SCHEDULED);
+        interview.getApplication().setTaskRepoUrl(null);
+        when(interviewRepository.findByIdAndApplicationJobCompany(9L, company)).thenReturn(Optional.of(interview));
+        when(interviewRepository.saveAndFlush(interview)).thenReturn(interview);
+
+        var response = interviewService.cancelInterview(9L, 0L, hr(company));
+
+        assertEquals(ApplicationStatus.TASK_SENT, response.applicationStatus());
     }
 
     @Test
@@ -353,9 +407,9 @@ class InterviewServiceTest {
             Interview interview = scheduledInterview(company, status);
             when(interviewRepository.findByIdAndApplicationJobCompany(9L, company))
                     .thenReturn(Optional.of(interview));
-            assertThrows(IllegalArgumentException.class, () -> interviewService.cancelInterview(9L, hr(company)));
+            assertThrows(IllegalArgumentException.class, () -> interviewService.cancelInterview(9L, 0L, hr(company)));
         }
-        verify(interviewRepository, never()).save(any());
+        verify(interviewRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -364,10 +418,10 @@ class InterviewServiceTest {
         User candidate = User.builder().id(3L).role(Role.CANDIDATE).build();
         Application application = application(company, ApplicationStatus.TECH_INTERVIEW_SCHEDULED);
         application.setCandidate(candidate);
-        Interview interview = Interview.builder().id(9L).application(application).interviewer(interviewer(5L, company))
+        Interview interview = Interview.builder().version(0L).id(9L).application(application).interviewer(interviewer(5L, company))
                 .scheduledAt(LocalDateTime.now().plusDays(1)).meetingLink("https://meet.example.com/1")
                 .feedback("private feedback").type(InterviewType.TECHNICAL).status(InterviewStatus.CANCELED).build();
-        Interview completed = Interview.builder().id(10L).application(application).interviewer(interviewer(5L, company))
+        Interview completed = Interview.builder().version(0L).id(10L).application(application).interviewer(interviewer(5L, company))
                 .scheduledAt(LocalDateTime.now().minusDays(1)).meetingLink("https://meet.example.com/2")
                 .feedback("more private feedback").type(InterviewType.HR).status(InterviewStatus.COMPLETED).build();
         when(applicationRepository.findById(7L)).thenReturn(Optional.of(application));
@@ -387,10 +441,10 @@ class InterviewServiceTest {
     void candidateAggregatesOnlyOwnInterviewsWithSafeJobContext() {
         Company company = company(1L, "Wix");
         User candidate = User.builder().id(3L).role(Role.CANDIDATE).build();
-        Application application = Application.builder().id(7L).candidate(candidate)
+        Application application = Application.builder().version(0L).id(7L).candidate(candidate)
                 .job(Job.builder().title("Backend Engineer").company(company).build())
                 .status(ApplicationStatus.TECH_INTERVIEW_SCHEDULED).build();
-        Interview interview = Interview.builder().id(9L).application(application).interviewer(interviewer(5L, company))
+        Interview interview = Interview.builder().version(0L).id(9L).application(application).interviewer(interviewer(5L, company))
                 .scheduledAt(LocalDateTime.now().plusDays(1)).meetingLink("https://meet.example.com/1")
                 .feedback("private feedback").type(InterviewType.TECHNICAL).status(InterviewStatus.SCHEDULED).build();
         when(interviewRepository.findByApplicationCandidateIdOrderByScheduledAtAsc(3L))
@@ -436,15 +490,15 @@ class InterviewServiceTest {
         User owner = interviewer(5L, company);
         Interview interview = interviewerInterview(9L, owner, InterviewStatus.SCHEDULED);
         when(interviewRepository.findByIdAndInterviewerId(9L, 5L)).thenReturn(Optional.of(interview));
-        when(interviewRepository.save(interview)).thenReturn(interview);
+        when(interviewRepository.saveAndFlush(interview)).thenReturn(interview);
 
-        var response = interviewService.submitInterviewerFeedback(9L, "  Strong technical discussion.  ", owner);
+        var response = interviewService.submitInterviewerFeedback(9L, "  Strong technical discussion.  ", 0L, owner);
 
         assertEquals("Strong technical discussion.", interview.getFeedback());
         assertEquals(InterviewStatus.COMPLETED, interview.getStatus());
         assertEquals(ApplicationStatus.TECH_INTERVIEW_SCHEDULED, interview.getApplication().getStatus());
         assertEquals(InterviewStatus.COMPLETED, response.status());
-        verify(interviewRepository).save(interview);
+        verify(interviewRepository).saveAndFlush(interview);
         verify(applicationRepository, never()).save(any());
     }
 
@@ -454,9 +508,9 @@ class InterviewServiceTest {
         User owner = interviewer(5L, company);
         Interview interview = interviewerInterview(9L, owner, InterviewStatus.SCHEDULED);
         when(interviewRepository.findByIdAndInterviewerId(9L, 5L)).thenReturn(Optional.of(interview));
-        when(interviewRepository.save(interview)).thenReturn(interview);
+        when(interviewRepository.saveAndFlush(interview)).thenReturn(interview);
 
-        var response = interviewService.updateInterviewerNotes(9L, "  Ask about testing strategy.  ", owner);
+        var response = interviewService.updateInterviewerNotes(9L, "  Ask about testing strategy.  ", 0L, owner);
 
         assertEquals("Ask about testing strategy.", response.interviewerNotes());
         assertEquals(InterviewStatus.SCHEDULED, interview.getStatus());
@@ -469,9 +523,9 @@ class InterviewServiceTest {
         User other = interviewer(6L, company(1L, "Wix"));
 
         assertThrows(ResourceNotFoundException.class,
-                () -> interviewService.updateInterviewerNotes(9L, "notes", other));
+                () -> interviewService.updateInterviewerNotes(9L, "notes", 0L, other));
         verify(interviewRepository).findByIdAndInterviewerId(9L, 6L);
-        verify(interviewRepository, never()).save(any());
+        verify(interviewRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -480,7 +534,7 @@ class InterviewServiceTest {
         when(interviewRepository.findByIdAndInterviewerId(9L, 5L))
                 .thenReturn(Optional.of(interviewerInterview(9L, owner, InterviewStatus.SCHEDULED)));
         assertThrows(IllegalArgumentException.class,
-                () -> interviewService.updateInterviewerNotes(9L, "x".repeat(10001), owner));
+                () -> interviewService.updateInterviewerNotes(9L, "x".repeat(10001), 0L, owner));
         assertFalse(List.of(CandidateInterviewResponseDTO.class.getRecordComponents()).stream()
                 .anyMatch(component -> component.getName().equals("interviewerNotes")));
     }
@@ -503,17 +557,34 @@ class InterviewServiceTest {
     }
 
     @Test
+    void submittedTaskCandidateReviewRequiresExplicitReviewerEvenWithAnotherInterviewAssignment() {
+        Company company = company(1L, "Wix");
+        User assignedReviewer = interviewer(5L, company);
+        User otherInterviewer = interviewer(6L, company);
+        Application application = application(company, ApplicationStatus.TASK_SUBMITTED);
+        application.setCandidate(User.builder().id(3L).firstName("Candidate").lastName("Name")
+                .email("candidate@example.com").role(Role.CANDIDATE).build());
+        application.setTaskReviewer(assignedReviewer);
+        when(applicationRepository.findByIdAndJobCompany(7L, company)).thenReturn(Optional.of(application));
+        when(interviewRepository.existsByApplicationIdAndInterviewerId(7L, 6L)).thenReturn(true);
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> interviewService.getInterviewerCandidateReview(7L, otherInterviewer));
+        assertEquals(7L, interviewService.getInterviewerCandidateReview(7L, assignedReviewer).applicationId());
+    }
+
+    @Test
     void otherInterviewersCannotSubmitFeedbackRegardlessOfCompany() {
         User sameCompany = interviewer(6L, company(1L, "Wix"));
         User otherCompany = interviewer(7L, company(2L, "Google"));
 
         assertThrows(ResourceNotFoundException.class,
-                () -> interviewService.submitInterviewerFeedback(9L, "Feedback", sameCompany));
+                () -> interviewService.submitInterviewerFeedback(9L, "Feedback", 0L, sameCompany));
         assertThrows(ResourceNotFoundException.class,
-                () -> interviewService.submitInterviewerFeedback(9L, "Feedback", otherCompany));
+                () -> interviewService.submitInterviewerFeedback(9L, "Feedback", 0L, otherCompany));
         verify(interviewRepository).findByIdAndInterviewerId(9L, 6L);
         verify(interviewRepository).findByIdAndInterviewerId(9L, 7L);
-        verify(interviewRepository, never()).save(any());
+        verify(interviewRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -524,28 +595,44 @@ class InterviewServiceTest {
             Interview interview = interviewerInterview(9L, owner, status);
             when(interviewRepository.findByIdAndInterviewerId(9L, 5L)).thenReturn(Optional.of(interview));
             assertThrows(IllegalArgumentException.class,
-                    () -> interviewService.submitInterviewerFeedback(9L, "Feedback", owner));
+                    () -> interviewService.submitInterviewerFeedback(9L, "Feedback", 0L, owner));
         }
-        verify(interviewRepository, never()).save(any());
+        verify(interviewRepository, never()).saveAndFlush(any());
     }
 
     @Test
     void feedbackValidationAndInterviewerRoleAreEnforced() {
         User owner = interviewer(5L, company(1L, "Wix"));
         assertThrows(IllegalArgumentException.class,
-                () -> interviewService.submitInterviewerFeedback(9L, "   ", owner));
+                () -> interviewService.submitInterviewerFeedback(9L, "   ", 0L, owner));
         assertThrows(IllegalArgumentException.class,
-                () -> interviewService.submitInterviewerFeedback(9L, "x".repeat(10001), owner));
+                () -> interviewService.submitInterviewerFeedback(9L, "x".repeat(10001), 0L, owner));
         assertThrows(AccessDeniedException.class,
                 () -> interviewService.getInterviewerInterviews(hr(company(1L, "Wix"))));
-        verify(interviewRepository, never()).save(any());
+        verify(interviewRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void delayedStaleInterviewNotesAreRejectedWithoutChangingNewestValue() {
+        Company company = company(1L, "Wix");
+        User owner = interviewer(5L, company);
+        Interview interview = interviewerInterview(9L, owner, InterviewStatus.SCHEDULED);
+        interview.setVersion(3L);
+        interview.setInterviewerNotes("newest committed notes");
+        when(interviewRepository.findByIdAndInterviewerId(9L, 5L)).thenReturn(Optional.of(interview));
+
+        assertThrows(ObjectOptimisticLockingFailureException.class,
+                () -> interviewService.updateInterviewerNotes(9L, "stale browser notes", 2L, owner));
+
+        assertEquals("newest committed notes", interview.getInterviewerNotes());
+        verify(interviewRepository, never()).saveAndFlush(any());
     }
 
     @Test
     void hrReadsScheduledInterviewsWithInterviewerIdForRescheduling() {
         Company company = company(1L, "Wix");
         Application application = application(company, ApplicationStatus.TECH_INTERVIEW_SCHEDULED);
-        Interview interview = Interview.builder().id(9L).application(application).interviewer(interviewer(5L, company))
+        Interview interview = Interview.builder().version(0L).id(9L).application(application).interviewer(interviewer(5L, company))
                 .scheduledAt(LocalDateTime.now().plusDays(1)).meetingLink("https://meet.example.com/1")
                 .type(InterviewType.TECHNICAL).status(InterviewStatus.SCHEDULED).build();
         when(applicationRepository.findByIdAndJobCompany(7L, company)).thenReturn(Optional.of(application));
@@ -562,7 +649,7 @@ class InterviewServiceTest {
         Company wix = company(1L, "Wix");
         Company google = company(2L, "Google");
         Application application = application(wix, ApplicationStatus.TECH_INTERVIEW_SCHEDULED);
-        Interview interview = Interview.builder().id(9L).application(application).interviewer(interviewer(5L, wix))
+        Interview interview = Interview.builder().version(0L).id(9L).application(application).interviewer(interviewer(5L, wix))
                 .scheduledAt(LocalDateTime.now().minusDays(1)).feedback("Recommended")
                 .type(InterviewType.TECHNICAL).status(InterviewStatus.COMPLETED).build();
         when(applicationRepository.findByIdAndJobCompany(7L, wix)).thenReturn(Optional.of(application));
@@ -581,12 +668,12 @@ class InterviewServiceTest {
 
     private HrInterviewScheduleRequestDTO validRequest(Long interviewerId, InterviewType type) {
         return new HrInterviewScheduleRequestDTO(
-                interviewerId, type, LocalDateTime.now().plusDays(2), "https://meet.example.com/interview");
+                interviewerId, type, LocalDateTime.now().plusDays(2), "https://meet.example.com/interview", 0L);
     }
 
     private HrInterviewRescheduleRequestDTO validReschedule(Long interviewerId) {
         return new HrInterviewRescheduleRequestDTO(
-                interviewerId, LocalDateTime.now().plusDays(2), "https://meet.example.com/rescheduled");
+                interviewerId, LocalDateTime.now().plusDays(2), "https://meet.example.com/rescheduled", 0L);
     }
 
     private Interview scheduledInterview(Company company, InterviewStatus status) {
@@ -594,23 +681,23 @@ class InterviewServiceTest {
         application.setTaskInstructions("Build an API");
         application.setTaskDeadline(LocalDateTime.now().plusDays(1));
         application.setTaskRepoUrl("https://github.com/candidate/task");
-        return Interview.builder().id(9L).application(application).interviewer(interviewer(5L, company))
+        return Interview.builder().version(0L).id(9L).application(application).interviewer(interviewer(5L, company))
                 .scheduledAt(LocalDateTime.now().plusDays(1)).meetingLink("https://meet.example.com/original")
                 .type(InterviewType.TECHNICAL).status(status).build();
     }
 
     private Interview interviewerInterview(Long id, User owner, InterviewStatus status) {
-        Application application = Application.builder().id(7L)
+        Application application = Application.builder().version(0L).id(7L)
                 .candidate(User.builder().id(3L).firstName("Candidate").lastName("Name").role(Role.CANDIDATE).build())
                 .job(Job.builder().id(2L).title("Backend Engineer").company(owner.getCompany()).build())
                 .status(ApplicationStatus.TECH_INTERVIEW_SCHEDULED).build();
-        return Interview.builder().id(id).application(application).interviewer(owner)
+        return Interview.builder().version(0L).id(id).application(application).interviewer(owner)
                 .scheduledAt(LocalDateTime.now().plusDays(1)).meetingLink("https://meet.example.com/interview")
                 .type(InterviewType.TECHNICAL).status(status).build();
     }
 
     private Application application(Company company, ApplicationStatus status) {
-        return Application.builder().id(7L).candidate(User.builder().id(3L).role(Role.CANDIDATE).build())
+        return Application.builder().version(0L).id(7L).candidate(User.builder().id(3L).role(Role.CANDIDATE).build())
                 .job(Job.builder().company(company).build()).status(status).build();
     }
 

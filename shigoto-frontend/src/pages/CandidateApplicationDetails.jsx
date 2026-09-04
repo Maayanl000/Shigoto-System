@@ -44,6 +44,7 @@ function formatInterviewSchedule(value) {
 
 function validateRepositoryUrl(value) {
   if (!value.trim()) return 'GitHub Repository URL is required.';
+  if (value.trim().length > 255) return 'GitHub Repository URL must be at most 255 characters.';
 
   try {
     const url = new URL(value.trim());
@@ -179,6 +180,7 @@ export default function CandidateApplicationDetails() {
     try {
       const response = await api.put(`/applications/${application.id}/task-submission`, {
         repositoryUrl: repositoryUrl.trim(),
+        version: application.version,
       });
       setApplication(response.data);
       setRepositoryUrl('');
@@ -187,6 +189,13 @@ export default function CandidateApplicationDetails() {
       if (error.response?.status === 401) {
         window.location.assign('/login');
         return;
+      }
+      if (error.response?.status === 409) {
+        try {
+          const refreshed = await api.get(`/applications/${application.id}`);
+          setApplication(refreshed.data);
+          setRepositoryUrl('');
+        } catch { /* Preserve the stale-write message from the mutation response. */ }
       }
       const backendMessage = error.response?.data?.message;
       setSubmissionError(

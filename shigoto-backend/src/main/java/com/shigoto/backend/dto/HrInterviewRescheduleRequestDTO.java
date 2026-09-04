@@ -5,5 +5,6 @@ import java.time.LocalDateTime;
 public record HrInterviewRescheduleRequestDTO(
         Long interviewerId,
         LocalDateTime scheduledAt,
-        String meetingLink
+        String meetingLink,
+        Long version
 ) {}

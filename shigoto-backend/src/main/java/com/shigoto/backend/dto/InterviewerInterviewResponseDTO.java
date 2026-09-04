@@ -17,7 +17,8 @@ public record InterviewerInterviewResponseDTO(
         String meetingLink,
         InterviewStatus status,
         String feedback,
-        String interviewerNotes
+        String interviewerNotes,
+        Long version
 ) {
     public static InterviewerInterviewResponseDTO from(Interview interview) {
         var application = interview.getApplication();
@@ -28,6 +29,6 @@ public record InterviewerInterviewResponseDTO(
                 (candidate.getFirstName() + " " + candidate.getLastName()).trim(),
                 job.getTitle(), job.getCompany().getName(), interview.getType(),
                 interview.getScheduledAt(), interview.getMeetingLink(), interview.getStatus(),
-                interview.getFeedback(), interview.getInterviewerNotes());
+                interview.getFeedback(), interview.getInterviewerNotes(), interview.getVersion());
     }
 }

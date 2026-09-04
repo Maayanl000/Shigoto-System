@@ -49,7 +49,8 @@ public class InterviewerTaskController {
             throw new IllegalArgumentException("Task review decision is required");
         }
         User interviewer = authService.getAuthenticatedInterviewer(authentication);
-        return applicationService.reviewSubmittedTask(applicationId, request.decision(), interviewer);
+        return applicationService.reviewSubmittedTask(
+                applicationId, request.decision(), request.version(), interviewer);
     }
 
     @PutMapping("/applications/{applicationId}/task-review-notes")
@@ -59,6 +60,7 @@ public class InterviewerTaskController {
             Authentication authentication) {
         User interviewer = authService.getAuthenticatedInterviewer(authentication);
         return applicationService.updateTaskReviewNotes(
-                applicationId, request == null ? null : request.taskReviewNotes(), interviewer);
+                applicationId, request == null ? null : request.taskReviewNotes(),
+                request == null ? null : request.version(), interviewer);
     }
 }

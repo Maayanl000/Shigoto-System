@@ -40,6 +40,11 @@ function RequireRole({ role, children }) {
   return children;
 }
 
+/**
+ * Defines the application's public and role-protected frontend routes.
+ *
+ * @returns {JSX.Element} The configured route hierarchy.
+ */
 function AppRoutes() {
   return (
     <Routes>

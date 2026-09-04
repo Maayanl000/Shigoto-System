@@ -86,12 +86,11 @@ export default function WorkspaceShowcase() {
                 <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center">
                       <Box sx={{ display: 'grid', placeItems: 'center', width: 42, height: 42, borderRadius: 1.5, bgcolor: 'secondary.light', color: 'secondary.dark' }}>{workspace.icon}</Box>
-                      <Chip label="Development preview" size="small" variant="outlined" />
                     </Stack>
                     <Typography variant="h6" component="h3" sx={{ mt: 2.5 }}>{workspace.title}</Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 1, minHeight: 64, lineHeight: 1.65 }}>{workspace.description}</Typography>
                     <Box sx={{ mt: 2.5, p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1.5, bgcolor: '#F1F5F9' }}><WorkspaceMiniature type={workspace.preview} /></Box>
-                  <Typography variant="body2" fontWeight={800} color="text.secondary" sx={{ mt: 2.25 }}>Preview workspace</Typography>
+                  <Typography variant="body2" fontWeight={800} color="text.secondary" sx={{ mt: 2.25 }}>Role-focused workspace</Typography>
                 </CardContent>
               </Card>
             </Grid>

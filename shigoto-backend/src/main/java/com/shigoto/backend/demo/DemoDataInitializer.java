@@ -50,17 +50,16 @@ public class DemoDataInitializer implements CommandLineRunner {
         Company microsoft = findOrCreateCompany("Microsoft");
         Company google = findOrCreateCompany("Google");
 
-        findOrCreateUser("Rachel", "Green", "rachel.green@nvidia.demo", Role.HR, nvidia);
-        findOrCreateUser("Monica", "Geller", "monica.geller@nvidia.demo", Role.HR, nvidia);
-        findOrCreateUser("Gunther", "", "gunther@nvidia.demo", Role.INTERVIEWER, nvidia);
+        findOrCreateCompanyHr("Rachel", "Green", "rachel.green@nvidia.demo", nvidia);
+        User gunther = findOrCreateUser("Gunther", "", "gunther@nvidia.demo", Role.INTERVIEWER, nvidia);
         findOrCreateUser(
                 "Mike", "Hannigan", "mike.hannigan@nvidia.demo", Role.INTERVIEWER, nvidia);
         User chandler = findOrCreateUser(
                 "Chandler", "Bing", "chandler.bing@microsoft.demo", Role.INTERVIEWER, microsoft);
         User joey = findOrCreateUser(
                 "Joey", "Tribbiani", "joey.tribbiani@microsoft.demo", Role.INTERVIEWER, microsoft);
-        findOrCreateUser("Janice", "Litman", "janice.litman@microsoft.demo", Role.HR, microsoft);
-        findOrCreateUser("Ross", "Geller", "ross.geller@google.demo", Role.HR, google);
+        findOrCreateCompanyHr("Janice", "Litman", "janice.litman@microsoft.demo", microsoft);
+        findOrCreateCompanyHr("Ross", "Geller", "ross.geller@google.demo", google);
         findOrCreateUser(
                 "Phoebe", "Buffay", "phoebe.buffay@google.demo", Role.INTERVIEWER, google);
 
@@ -96,26 +95,26 @@ public class DemoDataInitializer implements CommandLineRunner {
         findOrCreateApplication(mikasa, nvidiaFullStack, ApplicationStatus.HR_INTERVIEW,
                 base.minusDays(8), base.minusDays(6), builder -> builder
                         .coverLetter("Experienced across frontend delivery and backend integration."));
-        findOrCreateApplication(armin, nvidiaBackend, ApplicationStatus.TASK_SENT,
+        assignDemoTaskReviewer(findOrCreateApplication(armin, nvidiaBackend, ApplicationStatus.TASK_SENT,
                 base.minusDays(10), base.minusDays(4), builder -> builder
                         .taskInstructions("Design a small API for tracking GPU workload jobs.")
-                        .taskDeadline(base.plusDays(3)));
+                        .taskDeadline(base.plusDays(3))), gunther);
         findOrCreateApplication(hange, nvidiaBackend, ApplicationStatus.REJECTED,
                 base.minusDays(14), base.minusDays(3), builder -> builder
                         .candidateFeedback("Strong profile, but another candidate more closely matched the current role."));
 
-        findOrCreateApplication(eren, microsoftSoftware, ApplicationStatus.TASK_SUBMITTED,
+        assignDemoTaskReviewer(findOrCreateApplication(eren, microsoftSoftware, ApplicationStatus.TASK_SUBMITTED,
                 base.minusDays(12), base.minusDays(1), builder -> builder
                         .taskInstructions("Implement a resilient service-health dashboard API.")
                         .taskDeadline(base.plusDays(1))
-                        .taskRepoUrl("https://github.com/shigoto-demo/eren-service-health"));
-        Application managerInterviewApplication = findOrCreateApplication(
+                        .taskRepoUrl("https://github.com/shigoto-demo/eren-service-health")), chandler);
+        Application managerInterviewApplication = assignDemoTaskReviewer(findOrCreateApplication(
                 mikasa, microsoftCpp, ApplicationStatus.TECH_INTERVIEW_SCHEDULED,
                 base.minusDays(20), base.minusDays(2), builder -> builder
                         .taskInstructions("Implement and benchmark a thread-safe in-memory cache.")
                         .taskDeadline(base.minusDays(7))
                         .taskRepoUrl("https://github.com/shigoto-demo/mikasa-cpp-cache")
-                        .taskReviewNotes("Approved for technical and manager interviews."));
+                        .taskReviewNotes("Approved for technical and manager interviews.")), chandler);
 
         findOrCreateApplication(armin, googleFrontend, ApplicationStatus.OFFER,
                 base.minusDays(18), base.minusDays(1), builder -> builder
@@ -175,6 +174,19 @@ public class DemoDataInitializer implements CommandLineRunner {
                         .build()));
     }
 
+    private User findOrCreateCompanyHr(
+            String firstName, String lastName, String email, Company company) {
+        var existingHrs = userRepository.findByRoleAndCompanyOrderByFirstNameAscLastNameAsc(Role.HR, company);
+        if (existingHrs.size() > 1) {
+            throw new IllegalStateException("Company " + company.getName()
+                    + " already has multiple HR users; manual cleanup is required");
+        }
+        if (existingHrs.size() == 1) {
+            return existingHrs.getFirst();
+        }
+        return findOrCreateUser(firstName, lastName, email, Role.HR, company);
+    }
+
     private User validateDemoUser(
             User user, String firstName, String lastName, Role role, Company expectedCompany) {
         boolean expectedIdentity = firstName.equals(user.getFirstName())
@@ -224,6 +236,13 @@ public class DemoDataInitializer implements CommandLineRunner {
                     customize.accept(builder);
                     return applicationRepository.save(builder.build());
                 });
+    }
+
+    private Application assignDemoTaskReviewer(Application application, User reviewer) {
+        if (application.getTaskReviewer() == null) {
+            application.setTaskReviewer(reviewer);
+        }
+        return application;
     }
 
     private Interview findOrCreateInterview(

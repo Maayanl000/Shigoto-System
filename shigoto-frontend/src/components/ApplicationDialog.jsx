@@ -98,7 +98,7 @@ export default function ApplicationDialog({ open, onClose, job, onSubmitted }) {
         <Divider />
         <DialogContent sx={{ display: 'grid', gap: 2.5, pt: 3 }}>
           <Alert severity="info" icon={false}>Your selected PDF CV will be securely attached to this application.</Alert>
-          {!canSubmitJob && <Alert severity="warning">This preview job is not connected to the backend and cannot accept applications.</Alert>}
+          {!canSubmitJob && <Alert severity="warning">This job is not currently available for applications.</Alert>}
           {submissionStatus === 'success' && <Alert severity="success">Your application was submitted successfully.</Alert>}
           {submissionStatus === 'error' && <Alert severity="error">{submissionError}</Alert>}
 

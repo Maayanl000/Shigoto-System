@@ -12,6 +12,7 @@ import com.shigoto.backend.repository.JobRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import java.util.List;
 import java.util.Optional;
@@ -101,15 +102,15 @@ class JobServiceTest {
         Company wix = company(1L, "Wix");
         Job job = job(3L, wix, JobStatus.OPEN);
         when(repository.findByIdAndCompany(3L, wix)).thenReturn(Optional.of(job));
-        when(repository.save(job)).thenReturn(job);
+        when(repository.saveAndFlush(job)).thenReturn(job);
 
         var response = service.updateJobForHr(hr(wix), 3L,
-                new HrJobUpdateRequestDTO("Updated", "Updated description", "Remote", JobStatus.PAUSED));
+                new HrJobUpdateRequestDTO("Updated", "Updated description", "Remote", JobStatus.PAUSED, 0L));
 
         assertEquals("Updated", response.title());
         assertEquals(JobStatus.PAUSED, response.status());
         assertSame(wix, job.getCompany());
-        verify(repository).save(job);
+        verify(repository).saveAndFlush(job);
     }
 
     @Test
@@ -117,7 +118,7 @@ class JobServiceTest {
         Company wix = company(1L, "Wix");
         Job job = job(3L, wix, JobStatus.OPEN);
         when(repository.findByIdAndCompany(3L, wix)).thenReturn(Optional.of(job));
-        when(repository.save(job)).thenReturn(job);
+        when(repository.saveAndFlush(job)).thenReturn(job);
 
         var response = service.updateJobForHr(hr(wix), 3L, update(JobStatus.CLOSED));
 
@@ -135,8 +136,43 @@ class JobServiceTest {
         verify(repository, never()).findAll();
     }
 
+    @Test
+    void staleSecondHrUpdateIsRejectedWithoutOverwritingFirstUpdate() {
+        Company wix = company(1L, "Wix");
+        Job job = job(3L, wix, JobStatus.OPEN);
+        job.setVersion(1L);
+        when(repository.findByIdAndCompany(3L, wix)).thenReturn(Optional.of(job));
+
+        HrJobUpdateRequestDTO staleRequest = new HrJobUpdateRequestDTO(
+                "Stale title", "Stale description", "Remote", JobStatus.PAUSED, 0L);
+
+        assertThrows(ObjectOptimisticLockingFailureException.class,
+                () -> service.updateJobForHr(hr(wix), 3L, staleRequest));
+        assertEquals("Developer", job.getTitle());
+        assertEquals("Description", job.getDescription());
+        assertEquals(JobStatus.OPEN, job.getStatus());
+        verify(repository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void boundedJobStringsAccept255AndReject256Characters() {
+        User hr = hr(company(1L, "Wix"));
+        String maximum = "x".repeat(255);
+        when(repository.save(any(Job.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var accepted = service.createJobForHr(hr,
+                new HrJobCreateRequestDTO(maximum, "Description", maximum));
+        assertEquals(255, accepted.title().length());
+        assertEquals(255, accepted.location().length());
+
+        assertThrows(IllegalArgumentException.class, () -> service.createJobForHr(hr,
+                new HrJobCreateRequestDTO("x".repeat(256), "Description", "Remote")));
+        assertThrows(IllegalArgumentException.class, () -> service.createJobForHr(hr,
+                new HrJobCreateRequestDTO("Developer", "Description", "x".repeat(256))));
+    }
+
     private HrJobUpdateRequestDTO update(JobStatus status) {
-        return new HrJobUpdateRequestDTO("Developer", "Description", "Remote", status);
+        return new HrJobUpdateRequestDTO("Developer", "Description", "Remote", status, 0L);
     }
 
     private Company company(Long id, String name) {
@@ -148,7 +184,7 @@ class JobServiceTest {
     }
 
     private Job job(Long id, Company company, JobStatus status) {
-        return Job.builder().id(id).title("Developer").description("Description")
+        return Job.builder().id(id).version(0L).title("Developer").description("Description")
                 .location("Remote").company(company).status(status).build();
     }
 }

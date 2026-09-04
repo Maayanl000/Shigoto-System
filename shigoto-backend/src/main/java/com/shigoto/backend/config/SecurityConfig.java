@@ -63,7 +63,9 @@ public class SecurityConfig {
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                         .ignoringRequestMatchers("/api/auth/register", "/api/auth/login"))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/api/**").permitAll()
                         .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/csrf").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/users/register").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/hr/jobs").hasRole("HR")
                         .requestMatchers(HttpMethod.POST, "/api/hr/jobs").hasRole("HR")
                         .requestMatchers(HttpMethod.PUT, "/api/hr/jobs/**").hasRole("HR")
@@ -83,8 +85,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PUT, "/api/auth/me/profile").authenticated()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/applications",
-                                "/api/applications/candidate/**",
-                                "/api/users").hasRole("HR")
+                                "/api/applications/candidate/**").hasRole("HR")
                         .requestMatchers(HttpMethod.PUT, "/api/applications/{applicationId}").hasRole("HR")
                         .requestMatchers(HttpMethod.DELETE, "/api/applications/{applicationId}").hasRole("HR")
                         .requestMatchers(HttpMethod.POST, "/api/applications").authenticated()
@@ -97,7 +98,7 @@ public class SecurityConfig {
                                 "/api/applications/{applicationId}/interviews").authenticated()
                         .requestMatchers(HttpMethod.PUT,
                                 "/api/applications/{applicationId}/task-submission").authenticated()
-                        .anyRequest().permitAll())
+                        .anyRequest().denyAll())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)));
         return http.build();

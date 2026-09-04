@@ -19,6 +19,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.Arrays;
 import java.util.Optional;
@@ -93,6 +94,39 @@ class AuthServiceTest {
                 new RegisterRequestDTO("Dana", "Cohen", " Duplicate@Example.com ", "secret123",
                         "https://github.com/dana")));
         verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void boundedRegistrationStringsAccept255AndReject256Characters() {
+        String maximumName = "a".repeat(255);
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var accepted = authService.registerCandidate(new RegisterRequestDTO(
+                maximumName, "Cohen", "max@example.com", "secret123", "https://github.com/max"));
+        assertEquals(255, accepted.firstName().length());
+
+        assertThrows(IllegalArgumentException.class, () -> authService.registerCandidate(
+                new RegisterRequestDTO("a".repeat(256), "Cohen", "long-name@example.com", "secret123",
+                        "https://github.com/longname")));
+        assertThrows(IllegalArgumentException.class, () -> authService.registerCandidate(
+                new RegisterRequestDTO("Dana", "Cohen", "a".repeat(244) + "@example.com", "secret123",
+                        "https://github.com/longemail")));
+    }
+
+    @Test
+    void registrationMapsOnlyActualDuplicateEmailIntegrityFailuresToConflict() {
+        RegisterRequestDTO request = new RegisterRequestDTO(
+                "Dana", "Cohen", "race@example.com", "secret123", "https://github.com/dana");
+        when(userRepository.existsByEmail("race@example.com")).thenReturn(false, true);
+        when(userRepository.save(any(User.class)))
+                .thenThrow(new DataIntegrityViolationException("email unique constraint"));
+        assertThrows(DuplicateEmailException.class, () -> authService.registerCandidate(request));
+
+        reset(userRepository);
+        when(userRepository.existsByEmail("race@example.com")).thenReturn(false, false);
+        when(userRepository.save(any(User.class)))
+                .thenThrow(new DataIntegrityViolationException("unrelated constraint"));
+        assertThrows(DataIntegrityViolationException.class, () -> authService.registerCandidate(request));
     }
 
     @Test

@@ -14,6 +14,7 @@ import com.shigoto.backend.entity.User;
 import com.shigoto.backend.entity.GithubData;
 import com.shigoto.backend.entity.GithubAnalysisStatus;
 import com.shigoto.backend.exception.DuplicateApplicationException;
+import com.shigoto.backend.exception.ApplicationDeleteConflictException;
 import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.ApplicationRepository;
 import com.shigoto.backend.repository.JobRepository;
@@ -29,6 +30,7 @@ import com.shigoto.backend.entity.NotificationType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.core.io.Resource;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -85,15 +87,24 @@ public class ApplicationService {
             return toResponseDTO(saved);
         } catch (DataIntegrityViolationException ex) {
             deleteStoredCvAfterFailedApplication(storageKey);
-            throw new DuplicateApplicationException("Candidate has already applied for this job");
+            if (applicationRepository.existsByCandidateIdAndJobId(candidate.getId(), jobId)) {
+                throw new DuplicateApplicationException("Candidate has already applied for this job");
+            }
+            throw ex;
         } catch (RuntimeException ex) {
             deleteStoredCvAfterFailedApplication(storageKey);
             throw ex;
         }
     }
     // פונקציה למחיקת מועמדות לפי ID
-    public void deleteApplication(Long applicationId, User hr) {
+    @Transactional
+    public void deleteApplication(Long applicationId, Long expectedVersion, User hr) {
         Application application = findHrCompanyApplication(applicationId, hr);
+        requireExpectedVersion(application, expectedVersion);
+        if (interviewRepository.existsByApplicationId(applicationId)) {
+            throw new ApplicationDeleteConflictException(
+                    "Application cannot be deleted because interview history exists");
+        }
         applicationRepository.delete(application);
         applicationRepository.flush();
         cvStorageService.delete(application.getCvUrl());
@@ -133,24 +144,34 @@ public class ApplicationService {
     }
 
     @Transactional
-    public HrApplicationDetailsDTO updateHrNotes(Long applicationId, String hrNotes, User hr) {
+    public HrApplicationDetailsDTO updateHrNotes(
+            Long applicationId, String hrNotes, Long expectedVersion, User hr) {
         Application application = findHrCompanyApplication(applicationId, hr);
+        requireExpectedVersion(application, expectedVersion);
         String normalizedNotes = hrNotes == null || hrNotes.isBlank() ? null : hrNotes.trim();
         if (normalizedNotes != null && normalizedNotes.length() > 10_000) {
             throw new IllegalArgumentException("HR notes must not exceed 10000 characters");
         }
         application.setHrNotes(normalizedNotes);
-        return HrApplicationDetailsDTO.from(applicationRepository.save(application));
+        return HrApplicationDetailsDTO.from(applicationRepository.saveAndFlush(application));
     }
 
     @Transactional
     public HrApplicationDetailsDTO transitionHrApplicationStatus(
-            Long applicationId, ApplicationStatus targetStatus, User hr) {
+            Long applicationId, ApplicationStatus targetStatus, Long expectedVersion, User hr) {
         Application application = findHrCompanyApplication(applicationId, hr);
+        requireExpectedVersion(application, expectedVersion);
         ApplicationStatus currentStatus = application.getStatus();
         if (!isAllowedHrTransition(currentStatus, targetStatus)) {
             throw new IllegalArgumentException(
                     "Application cannot move from " + currentStatus + " to " + targetStatus);
+        }
+        if (targetStatus == ApplicationStatus.OFFER
+                && !interviewRepository.existsByApplicationIdAndTypeAndStatus(
+                applicationId, com.shigoto.backend.entity.InterviewType.TECHNICAL,
+                com.shigoto.backend.entity.InterviewStatus.COMPLETED)) {
+            throw new IllegalArgumentException(
+                    "Offer requires a completed technical interview");
         }
         if (currentStatus == ApplicationStatus.HR_INTERVIEW && targetStatus == ApplicationStatus.APPLIED) {
             if (application.getTaskInstructions() != null || application.getTaskDeadline() != null
@@ -166,7 +187,7 @@ public class ApplicationService {
             }
         }
         application.transitionTo(targetStatus);
-        HrApplicationDetailsDTO result = HrApplicationDetailsDTO.from(applicationRepository.save(application));
+        HrApplicationDetailsDTO result = HrApplicationDetailsDTO.from(applicationRepository.saveAndFlush(application));
         if (targetStatus == ApplicationStatus.REJECTED) {
             publish(application, NotificationType.APPLICATION_REJECTED);
         } else if (targetStatus == ApplicationStatus.OFFER) {
@@ -179,34 +200,38 @@ public class ApplicationService {
 
     @Transactional
     public HrApplicationDetailsDTO rejectHrApplication(
-            Long applicationId, String candidateFeedback, User hr) {
+            Long applicationId, String candidateFeedback, Long expectedVersion, User hr) {
         Application application = findHrCompanyApplication(applicationId, hr);
+        requireExpectedVersion(application, expectedVersion);
         if (!isAllowedHrTransition(application.getStatus(), ApplicationStatus.REJECTED)) {
             throw new IllegalArgumentException(
                     "Application cannot move from " + application.getStatus() + " to REJECTED");
         }
         application.setCandidateFeedback(normalizeCandidateFeedback(candidateFeedback));
         application.transitionTo(ApplicationStatus.REJECTED);
-        HrApplicationDetailsDTO result = HrApplicationDetailsDTO.from(applicationRepository.save(application));
+        HrApplicationDetailsDTO result = HrApplicationDetailsDTO.from(applicationRepository.saveAndFlush(application));
         publish(application, NotificationType.APPLICATION_REJECTED);
         return result;
     }
 
     @Transactional
     public HrApplicationDetailsDTO updateCandidateFeedback(
-            Long applicationId, String candidateFeedback, User hr) {
+            Long applicationId, String candidateFeedback, Long expectedVersion, User hr) {
         Application application = findHrCompanyApplication(applicationId, hr);
+        requireExpectedVersion(application, expectedVersion);
         if (application.getStatus() != ApplicationStatus.REJECTED) {
             throw new IllegalArgumentException("Candidate feedback can be edited only for a rejected application");
         }
         application.setCandidateFeedback(normalizeCandidateFeedback(candidateFeedback));
-        return HrApplicationDetailsDTO.from(applicationRepository.save(application));
+        return HrApplicationDetailsDTO.from(applicationRepository.saveAndFlush(application));
     }
 
     @Transactional
     public HrApplicationDetailsDTO assignHomeTask(
-            Long applicationId, String taskInstructions, LocalDateTime deadline, User hr) {
+            Long applicationId, String taskInstructions, LocalDateTime deadline, Long reviewerId,
+            Long expectedVersion, User hr) {
         Application application = findHrCompanyApplication(applicationId, hr);
+        requireExpectedVersion(application, expectedVersion);
         if (application.getStatus() != ApplicationStatus.HR_INTERVIEW) {
             throw new IllegalArgumentException("Home task can only be sent after the HR interview stage");
         }
@@ -220,19 +245,30 @@ public class ApplicationService {
         if (deadline == null || !deadline.isAfter(LocalDateTime.now())) {
             throw new IllegalArgumentException("Home task deadline must be in the future");
         }
+        if (reviewerId == null) {
+            throw new IllegalArgumentException("Home task reviewer is required");
+        }
+        User reviewer = userRepository.findByIdAndCompany(reviewerId, hr.getCompany())
+                .orElseThrow(() -> new ResourceNotFoundException("Interviewer not found"));
+        if (reviewer.getRole() != Role.INTERVIEWER) {
+            throw new IllegalArgumentException("Selected reviewer is not an interviewer");
+        }
         application.setTaskInstructions(normalizedInstructions);
         application.setTaskDeadline(deadline);
         application.setTaskRepoUrl(null);
+        application.setTaskReviewNotes(null);
+        application.setTaskReviewer(reviewer);
         application.transitionTo(ApplicationStatus.TASK_SENT);
-        HrApplicationDetailsDTO result = HrApplicationDetailsDTO.from(applicationRepository.save(application));
+        HrApplicationDetailsDTO result = HrApplicationDetailsDTO.from(applicationRepository.saveAndFlush(application));
         publish(application, NotificationType.HOME_TASK_ASSIGNED);
         return result;
     }
 
     @Transactional
     public HrApplicationDetailsDTO updateHomeTaskDeadline(
-            Long applicationId, LocalDateTime deadline, User hr) {
+            Long applicationId, LocalDateTime deadline, Long expectedVersion, User hr) {
         Application application = findHrCompanyApplication(applicationId, hr);
+        requireExpectedVersion(application, expectedVersion);
         if (application.getStatus() != ApplicationStatus.TASK_SENT) {
             throw new IllegalArgumentException("Home task deadline can be updated only before task submission");
         }
@@ -240,7 +276,7 @@ public class ApplicationService {
             throw new IllegalArgumentException("Home task deadline must be in the future");
         }
         application.setTaskDeadline(deadline);
-        HrApplicationDetailsDTO result = HrApplicationDetailsDTO.from(applicationRepository.save(application));
+        HrApplicationDetailsDTO result = HrApplicationDetailsDTO.from(applicationRepository.saveAndFlush(application));
         publish(application, NotificationType.HOME_TASK_UPDATED);
         return result;
     }
@@ -263,38 +299,47 @@ public class ApplicationService {
     @Transactional(readOnly = true)
     public List<InterviewerSubmittedTaskDTO> getSubmittedTasksForInterviewer(User interviewer) {
         requireInterviewerWithCompany(interviewer);
-        return applicationRepository.findByStatusAndJobCompanyOrderByAppliedAtAsc(
-                        ApplicationStatus.TASK_SUBMITTED, interviewer.getCompany())
+        return applicationRepository.findByStatusAndTaskReviewerIdAndJobCompanyOrderByAppliedAtAsc(
+                        ApplicationStatus.TASK_SUBMITTED, interviewer.getId(), interviewer.getCompany())
                 .stream().map(InterviewerSubmittedTaskDTO::from).toList();
     }
 
     @Transactional
     public InterviewerSubmittedTaskDTO reviewSubmittedTask(
-            Long applicationId, TaskReviewDecision decision, User interviewer) {
+            Long applicationId, TaskReviewDecision decision, Long expectedVersion, User interviewer) {
         requireInterviewerWithCompany(interviewer);
         if (decision == null) {
             throw new IllegalArgumentException("Task review decision is required");
         }
-        Application application = applicationRepository.findByIdAndJobCompany(
-                        applicationId, interviewer.getCompany())
+        Application application = applicationRepository.findByIdAndJobCompanyAndTaskReviewerId(
+                        applicationId, interviewer.getCompany(), interviewer.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
+        requireExpectedVersion(application, expectedVersion);
         if (application.getStatus() != ApplicationStatus.TASK_SUBMITTED) {
             throw new IllegalArgumentException("Only a submitted task can be reviewed");
         }
-        application.transitionTo(decision == TaskReviewDecision.APPROVE
-                ? ApplicationStatus.TASK_APPROVED : ApplicationStatus.REJECTED);
-        InterviewerSubmittedTaskDTO result = InterviewerSubmittedTaskDTO.from(applicationRepository.save(application));
+        boolean activeTechnicalInterview = decision == TaskReviewDecision.APPROVE
+                && interviewRepository.existsByApplicationIdAndTypeAndStatus(
+                applicationId, com.shigoto.backend.entity.InterviewType.TECHNICAL,
+                com.shigoto.backend.entity.InterviewStatus.SCHEDULED);
+        application.transitionTo(decision == TaskReviewDecision.REJECT
+                ? ApplicationStatus.REJECTED
+                : activeTechnicalInterview
+                        ? ApplicationStatus.TECH_INTERVIEW_SCHEDULED
+                        : ApplicationStatus.TASK_APPROVED);
+        InterviewerSubmittedTaskDTO result = InterviewerSubmittedTaskDTO.from(applicationRepository.saveAndFlush(application));
         if (decision == TaskReviewDecision.REJECT) publish(application, NotificationType.APPLICATION_REJECTED);
         return result;
     }
 
     @Transactional
     public InterviewerSubmittedTaskDTO updateTaskReviewNotes(
-            Long applicationId, String notes, User interviewer) {
+            Long applicationId, String notes, Long expectedVersion, User interviewer) {
         requireInterviewerWithCompany(interviewer);
-        Application application = applicationRepository.findByIdAndJobCompany(
-                        applicationId, interviewer.getCompany())
+        Application application = applicationRepository.findByIdAndJobCompanyAndTaskReviewerId(
+                        applicationId, interviewer.getCompany(), interviewer.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
+        requireExpectedVersion(application, expectedVersion);
         if (application.getStatus() != ApplicationStatus.TASK_SUBMITTED) {
             throw new IllegalArgumentException("Private task notes are available only while a task awaits review");
         }
@@ -303,7 +348,7 @@ public class ApplicationService {
             throw new IllegalArgumentException("Private task notes must be at most 10000 characters");
         }
         application.setTaskReviewNotes(normalized.isEmpty() ? null : normalized);
-        return InterviewerSubmittedTaskDTO.from(applicationRepository.save(application));
+        return InterviewerSubmittedTaskDTO.from(applicationRepository.saveAndFlush(application));
     }
 
     @Transactional(readOnly = true)
@@ -341,8 +386,10 @@ public class ApplicationService {
         return new CvDownload("cv-application-" + applicationId + ".pdf", resource);
     }
 
-    public ApplicationResponseDTO submitTask(Long applicationId, String repositoryUrl, User candidate) {
+    public ApplicationResponseDTO submitTask(
+            Long applicationId, String repositoryUrl, Long expectedVersion, User candidate) {
         Application application = findOwnedApplication(applicationId, candidate);
+        requireExpectedVersion(application, expectedVersion);
         if (application.getStatus() == ApplicationStatus.TASK_SUBMITTED) {
             throw new IllegalArgumentException("Technical task has already been submitted");
         }
@@ -362,7 +409,7 @@ public class ApplicationService {
         application.setTaskRepoUrl(normalizedRepositoryUrl);
         application.transitionTo(ApplicationStatus.TASK_SUBMITTED);
 
-        return toResponseDTO(applicationRepository.save(application));
+        return toResponseDTO(applicationRepository.saveAndFlush(application));
     }
 
     private Application findOwnedApplication(Long applicationId, User candidate) {
@@ -437,6 +484,9 @@ public class ApplicationService {
                 throw new IllegalArgumentException(
                         "Repository URL must be a valid GitHub repository URL in the form /owner/repository");
             }
+            if (trimmedUrl.length() > 255) {
+                throw new IllegalArgumentException("Repository URL must not exceed 255 characters");
+            }
             return trimmedUrl;
         } catch (URISyntaxException ex) {
             throw new IllegalArgumentException("Repository URL is malformed");
@@ -460,8 +510,18 @@ public class ApplicationService {
                 application.getTaskRepoUrl(),
                 application.getStatus() == ApplicationStatus.REJECTED
                         ? application.getCandidateFeedback() : null,
-                application.getCvUrl() != null && !application.getCvUrl().isBlank()
+                application.getCvUrl() != null && !application.getCvUrl().isBlank(),
+                application.getVersion()
         );
+    }
+
+    private void requireExpectedVersion(Application application, Long expectedVersion) {
+        if (expectedVersion == null) {
+            throw new IllegalArgumentException("Application version is required");
+        }
+        if (!expectedVersion.equals(application.getVersion())) {
+            throw new ObjectOptimisticLockingFailureException(Application.class, application.getId());
+        }
     }
 
     private String normalizeCandidateFeedback(String feedback) {

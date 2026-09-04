@@ -29,6 +29,8 @@ public interface InterviewRepository extends JpaRepository<Interview, Long> {
 
     boolean existsByApplicationIdAndInterviewerId(Long applicationId, Long interviewerId);
 
+    boolean existsByApplicationId(Long applicationId);
+
     boolean existsByApplicationIdAndInterviewerIdAndScheduledAtAndStatusNot(
             Long applicationId, Long interviewerId, java.time.LocalDateTime scheduledAt, InterviewStatus status);
 
@@ -48,5 +50,8 @@ public interface InterviewRepository extends JpaRepository<Interview, Long> {
             Long applicationId, InterviewType type, InterviewStatus status, Long id);
 
     boolean existsByApplicationIdAndTypeAndStatusNot(
+            Long applicationId, InterviewType type, InterviewStatus status);
+
+    boolean existsByApplicationIdAndTypeAndStatus(
             Long applicationId, InterviewType type, InterviewStatus status);
 }

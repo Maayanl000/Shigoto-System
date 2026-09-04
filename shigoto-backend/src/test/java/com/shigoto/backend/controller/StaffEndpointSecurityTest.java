@@ -30,6 +30,7 @@ import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilte
 import org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -73,6 +74,54 @@ class StaffEndpointSecurityTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Test
+    void removedUserListingIsDeniedForEveryRoleAndAnonymousCaller() throws Exception {
+        mockMvc.perform(get("/api/users").with(user("hr").roles("HR")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/users").with(user("candidate").roles("CANDIDATE")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/users").with(user("interviewer").roles("INTERVIEWER")))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/users"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void delayedStaleApplicationRequestReturnsConflict() throws Exception {
+        User hr = User.builder().id(1L).role(Role.HR)
+                .company(com.shigoto.backend.entity.Company.builder().id(1L).name("NVIDIA").build()).build();
+        when(authService.getAuthenticatedHr(any())).thenReturn(hr);
+        when(applicationService.updateHrNotes(7L, "stale", 2L, hr))
+                .thenThrow(new ObjectOptimisticLockingFailureException(
+                        com.shigoto.backend.entity.Application.class, 7L));
+
+        mockMvc.perform(put("/api/hr/applications/7/notes")
+                        .with(user("hr").roles("HR")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"hrNotes\":\"stale\",\"version\":2}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(
+                        "This record was updated by another user. Refresh and try again."));
+    }
+
+    @Test
+    void delayedStaleInterviewRequestReturnsConflict() throws Exception {
+        User interviewer = User.builder().id(5L).role(Role.INTERVIEWER)
+                .company(com.shigoto.backend.entity.Company.builder().id(1L).name("NVIDIA").build()).build();
+        when(authService.getAuthenticatedInterviewer(any())).thenReturn(interviewer);
+        when(interviewService.updateInterviewerNotes(9L, "stale", 4L, interviewer))
+                .thenThrow(new ObjectOptimisticLockingFailureException(
+                        com.shigoto.backend.entity.Interview.class, 9L));
+
+        mockMvc.perform(put("/api/interviewer/interviews/9/notes")
+                        .with(user("interviewer").roles("INTERVIEWER")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"interviewerNotes\":\"stale\",\"version\":4}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(
+                        "This record was updated by another user. Refresh and try again."));
+    }
 
     @MockitoBean
     private ApplicationService applicationService;
@@ -151,11 +200,12 @@ class StaffEndpointSecurityTest {
                 .andExpect(jsonPath("$[0].id").value(7))
                 .andExpect(jsonPath("$[0].hrNotes").value("Own company notes"));
         mockMvc.perform(delete("/api/applications/7")
+                        .param("version", "0")
                         .with(user("hr").roles("HR")).with(csrf()))
                 .andExpect(status().isNoContent());
 
         verify(applicationService).getApplicationsByCandidate(2L, hr);
-        verify(applicationService).deleteApplication(7L, hr);
+        verify(applicationService).deleteApplication(7L, 0L, hr);
     }
 
     @Test
@@ -163,9 +213,10 @@ class StaffEndpointSecurityTest {
         User hr = User.builder().id(1L).email("hr@example.com").role(Role.HR)
                 .company(com.shigoto.backend.entity.Company.builder().id(1L).name("Shigoto").build()).build();
         HrApplicationDetailsDTO response = new HrApplicationDetailsDTO(
-                7L, ApplicationStatus.APPLIED, null, "Cover", "Notes", null, null, null, null,
+                7L, ApplicationStatus.APPLIED, null, "Cover", "Notes", null, null, null, null, null, null,
                 2L, "Dana", "Cohen", "dana@example.com", "https://github.com/dana",
-                "Developer", "Backend Engineer", null, false, 3L, "Backend Engineer", "Remote", "Shigoto", true, null);
+                "Developer", "Backend Engineer", null, false, 3L, "Backend Engineer", "Remote", "Shigoto", true, null,
+                0L);
         when(authService.getAuthenticatedHr(any())).thenReturn(hr);
         when(applicationService.getHrApplicationDetails(7L, hr)).thenReturn(response);
 
@@ -460,18 +511,18 @@ class StaffEndpointSecurityTest {
         User hr = User.builder().id(1L).role(Role.HR)
                 .company(com.shigoto.backend.entity.Company.builder().id(1L).name("Wix").build()).build();
         HrApplicationDetailsDTO response = new HrApplicationDetailsDTO(
-                1L, ApplicationStatus.REJECTED, null, "Cover", "Notes", null, null, null, null,
+                1L, ApplicationStatus.REJECTED, null, "Cover", "Notes", null, null, null, null, null, null,
                 2L, "Dana", "Cohen", "dana@example.com", null, null, null, null, false,
-                3L, "Developer", "Remote", "Wix", false, null);
+                3L, "Developer", "Remote", "Wix", false, null, 0L);
         when(authService.getAuthenticatedHr(any())).thenReturn(hr);
-        when(applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.REJECTED, hr))
+        when(applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.REJECTED, 0L, hr))
                 .thenReturn(response);
 
         mockMvc.perform(put("/api/hr/applications/1/status")
                         .with(user("hr").roles("HR"))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\":\"REJECTED\"}"))
+                        .content("{\"status\":\"REJECTED\",\"version\":0}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("REJECTED"))
                 .andExpect(jsonPath("$.cvAvailable").value(false))
@@ -545,21 +596,21 @@ class StaffEndpointSecurityTest {
         ApplicationResponseDTO response = new ApplicationResponseDTO(
                 1L, 2L, 3L, "Developer", "Shigoto", "Remote", "Cover",
                 ApplicationStatus.TASK_SUBMITTED, null, null, "Build a REST API",
-                "https://github.com/user/repo", null, true);
+                "https://github.com/user/repo", null, true, 0L);
         when(authService.getAuthenticatedCandidate(any())).thenReturn(candidate);
-        when(applicationService.submitTask(1L, "https://github.com/user/repo", candidate)).thenReturn(response);
+        when(applicationService.submitTask(1L, "https://github.com/user/repo", 0L, candidate)).thenReturn(response);
 
         var request = put("/api/applications/1/task-submission")
                 .with(user("candidate").roles("CANDIDATE"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"repositoryUrl\":\"https://github.com/user/repo\"}");
+                .content("{\"repositoryUrl\":\"https://github.com/user/repo\",\"version\":0}");
         mockMvc.perform(request).andExpect(status().isForbidden());
 
         mockMvc.perform(put("/api/applications/1/task-submission")
                         .with(user("candidate").roles("CANDIDATE"))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"repositoryUrl\":\"https://github.com/user/repo\"}"))
+                        .content("{\"repositoryUrl\":\"https://github.com/user/repo\",\"version\":0}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.cvAvailable").value(true))
                 .andExpect(jsonPath("$.status").value("TASK_SUBMITTED"));

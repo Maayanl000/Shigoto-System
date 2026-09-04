@@ -37,7 +37,10 @@ public class InterviewerInterviewController {
             Authentication authentication) {
         User interviewer = authService.getAuthenticatedInterviewer(authentication);
         return interviewService.submitInterviewerFeedback(
-                interviewId, request == null ? null : request.feedback(), interviewer);
+                interviewId,
+                request == null ? null : request.feedback(),
+                request == null ? null : request.version(),
+                interviewer);
     }
 
     @PutMapping("/{interviewId}/notes")
@@ -47,6 +50,9 @@ public class InterviewerInterviewController {
             Authentication authentication) {
         User interviewer = authService.getAuthenticatedInterviewer(authentication);
         return interviewService.updateInterviewerNotes(
-                interviewId, request == null ? null : request.interviewerNotes(), interviewer);
+                interviewId,
+                request == null ? null : request.interviewerNotes(),
+                request == null ? null : request.version(),
+                interviewer);
     }
 }

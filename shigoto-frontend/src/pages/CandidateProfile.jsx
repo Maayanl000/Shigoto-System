@@ -11,6 +11,7 @@ import { isValidGithubProfile } from '../utils/githubProfile';
 
 function validateName(value, label) {
   if (!value.trim()) return `${label} is required.`;
+  if (value.trim().length > 255) return `${label} must be at most 255 characters.`;
   if (/\p{Nd}/u.test(value)) return `${label} must not contain digits.`;
   return null;
 }
@@ -60,6 +61,10 @@ export default function CandidateProfile() {
     }
     if (!isValidGithubProfile(values.githubProfileUrl)) {
       setError('Enter a valid GitHub profile URL, such as https://github.com/username.');
+      return;
+    }
+    if (values.githubProfileUrl.trim().length > 255) {
+      setError('GitHub profile URL must be at most 255 characters.');
       return;
     }
     if (values.currentTitle.trim().length > 100 || values.desiredRole.trim().length > 100) {
@@ -119,10 +124,10 @@ export default function CandidateProfile() {
 
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField label="First name" value={values.firstName} onChange={handleChange('firstName')} autoComplete="given-name" required disabled={saving} fullWidth />
+                <TextField label="First name" value={values.firstName} onChange={handleChange('firstName')} inputProps={{ maxLength: 255 }} autoComplete="given-name" required disabled={saving} fullWidth />
               </Grid>
               <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField label="Last name" value={values.lastName} onChange={handleChange('lastName')} autoComplete="family-name" required disabled={saving} fullWidth />
+                <TextField label="Last name" value={values.lastName} onChange={handleChange('lastName')} inputProps={{ maxLength: 255 }} autoComplete="family-name" required disabled={saving} fullWidth />
               </Grid>
             </Grid>
 
@@ -141,6 +146,7 @@ export default function CandidateProfile() {
                   label="GitHub Profile URL"
                   value={values.githubProfileUrl}
                   onChange={handleChange('githubProfileUrl')}
+                  inputProps={{ maxLength: 255 }}
                   placeholder="https://github.com/username"
                   autoComplete="url"
                   required

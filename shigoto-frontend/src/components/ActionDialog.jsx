@@ -1,4 +1,4 @@
-import { Alert, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, Stack, Typography } from '@mui/material';
+import { Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, Stack, Typography } from '@mui/material';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 
 export default function ActionDialog({
@@ -15,7 +15,6 @@ export default function ActionDialog({
       </DialogTitle>
       <Divider />
       <DialogContent sx={{ display: 'grid', gap: 2, pt: 3 }}>
-        {!onConfirm && <Alert severity="info" icon={false}>UI preview only. This action is not connected to the backend.</Alert>}
         {children}
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 2.5 }}>

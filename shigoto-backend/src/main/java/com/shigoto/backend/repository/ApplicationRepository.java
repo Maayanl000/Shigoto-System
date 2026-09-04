@@ -30,6 +30,12 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
     List<Application> findByStatusAndJobCompanyOrderByAppliedAtAsc(
             ApplicationStatus status, Company company);
 
+    List<Application> findByStatusAndTaskReviewerIdAndJobCompanyOrderByAppliedAtAsc(
+            ApplicationStatus status, Long taskReviewerId, Company company);
+
+    Optional<Application> findByIdAndJobCompanyAndTaskReviewerId(
+            Long id, Company company, Long taskReviewerId);
+
     boolean existsByCandidateIdAndJobId(Long candidateId, Long jobId);
 
     Optional<Application> findByCandidateIdAndJobId(Long candidateId, Long jobId);

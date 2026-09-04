@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Link, Stack, TextField, Typography } from '@mui/material';
 import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
@@ -46,6 +46,12 @@ export default function InterviewerCandidateReview() {
   const [notesBusy, setNotesBusy] = useState(false);
   const [notesError, setNotesError] = useState('');
 
+  const loadRecord = useCallback(async () => {
+    const response = await api.get(`/interviewer/applications/${applicationId}`);
+    setRecord(response.data);
+    return response.data;
+  }, [applicationId]);
+
   const openNotes = () => {
     setTaskNotes(record.taskReviewNotes || '');
     setNotesError('');
@@ -56,10 +62,15 @@ export default function InterviewerCandidateReview() {
     setNotesBusy(true);
     setNotesError('');
     try {
-      const response = await api.put(`/interviewer/applications/${applicationId}/task-review-notes`, { taskReviewNotes: taskNotes });
-      setRecord((current) => ({ ...current, taskReviewNotes: response.data.taskReviewNotes }));
+      const response = await api.put(`/interviewer/applications/${applicationId}/task-review-notes`, {
+        taskReviewNotes: taskNotes, version: record.version,
+      });
+      setRecord(response.data);
       setNotesOpen(false);
     } catch (requestError) {
+      if (requestError.response?.status === 409) {
+        try { await loadRecord(); } catch { /* Keep the conflict message if refresh also fails. */ }
+      }
       setNotesError(requestError.response?.data?.message || 'Could not save private task notes.');
     } finally {
       setNotesBusy(false);

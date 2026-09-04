@@ -10,7 +10,7 @@ public record InterviewerCandidateReviewDTO(
         String currentTitle, String desiredRole, String githubProfileUrl,
         String jobTitle, String companyName, ApplicationStatus status,
         String taskInstructions, LocalDateTime taskDeadline, String taskRepoUrl,
-        String taskReviewNotes, GithubAnalysisDTO githubAnalysis
+        String taskReviewNotes, GithubAnalysisDTO githubAnalysis, Long version
 ) {
     public static InterviewerCandidateReviewDTO from(Application application) {
         var candidate = application.getCandidate();
@@ -21,6 +21,6 @@ public record InterviewerCandidateReviewDTO(
                 candidate.getGithubProfileUrl(), job.getTitle(), job.getCompany().getName(),
                 application.getStatus(), application.getTaskInstructions(), application.getTaskDeadline(),
                 application.getTaskRepoUrl(), application.getTaskReviewNotes(),
-                GithubAnalysisDTO.from(candidate.getGithubData()));
+                GithubAnalysisDTO.from(candidate.getGithubData()), application.getVersion());
     }
 }

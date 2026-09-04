@@ -6,5 +6,6 @@ public record HrJobUpdateRequestDTO(
         String title,
         String description,
         String location,
-        JobStatus status
+        JobStatus status,
+        Long version
 ) {}

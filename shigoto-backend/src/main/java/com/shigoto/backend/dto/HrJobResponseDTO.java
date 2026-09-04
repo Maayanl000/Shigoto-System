@@ -11,11 +11,12 @@ public record HrJobResponseDTO(
         String description,
         String location,
         JobStatus status,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        Long version
 ) {
     public static HrJobResponseDTO from(Job job) {
         return new HrJobResponseDTO(
                 job.getId(), job.getTitle(), job.getDescription(), job.getLocation(),
-                job.getStatus(), job.getCreatedAt());
+                job.getStatus(), job.getCreatedAt(), job.getVersion());
     }
 }

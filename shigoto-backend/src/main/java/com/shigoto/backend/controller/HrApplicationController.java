@@ -58,7 +58,7 @@ public class HrApplicationController {
             Authentication authentication) {
         if (request == null) throw new IllegalArgumentException("HR notes request is required");
         User hr = authService.getAuthenticatedHr(authentication);
-        return applicationService.updateHrNotes(applicationId, request.hrNotes(), hr);
+        return applicationService.updateHrNotes(applicationId, request.hrNotes(), request.version(), hr);
     }
 
     @PutMapping("/{applicationId}/status")
@@ -70,7 +70,8 @@ public class HrApplicationController {
             throw new IllegalArgumentException("Application status is required");
         }
         User hr = authService.getAuthenticatedHr(authentication);
-        return applicationService.transitionHrApplicationStatus(applicationId, request.status(), hr);
+        return applicationService.transitionHrApplicationStatus(
+                applicationId, request.status(), request.version(), hr);
     }
 
     @PutMapping("/{applicationId}/reject")
@@ -80,7 +81,8 @@ public class HrApplicationController {
             Authentication authentication) {
         User hr = authService.getAuthenticatedHr(authentication);
         return applicationService.rejectHrApplication(
-                applicationId, request == null ? null : request.candidateFeedback(), hr);
+                applicationId, request == null ? null : request.candidateFeedback(),
+                request == null ? null : request.version(), hr);
     }
 
     @PutMapping("/{applicationId}/candidate-feedback")
@@ -90,7 +92,8 @@ public class HrApplicationController {
             Authentication authentication) {
         User hr = authService.getAuthenticatedHr(authentication);
         return applicationService.updateCandidateFeedback(
-                applicationId, request == null ? null : request.candidateFeedback(), hr);
+                applicationId, request == null ? null : request.candidateFeedback(),
+                request == null ? null : request.version(), hr);
     }
 
     @PostMapping("/{applicationId}/home-task")
@@ -103,7 +106,8 @@ public class HrApplicationController {
         }
         User hr = authService.getAuthenticatedHr(authentication);
         return applicationService.assignHomeTask(
-                applicationId, request.taskInstructions(), request.deadline(), hr);
+                applicationId, request.taskInstructions(), request.deadline(), request.reviewerId(),
+                request.version(), hr);
     }
 
     @PutMapping("/{applicationId}/home-task/deadline")
@@ -115,6 +119,7 @@ public class HrApplicationController {
             throw new IllegalArgumentException("Home task deadline request is required");
         }
         User hr = authService.getAuthenticatedHr(authentication);
-        return applicationService.updateHomeTaskDeadline(applicationId, request.deadline(), hr);
+        return applicationService.updateHomeTaskDeadline(
+                applicationId, request.deadline(), request.version(), hr);
     }
 }

@@ -17,5 +17,6 @@ public record ApplicationResponseDTO(
         String taskInstructions,
         String taskRepoUrl,
         String candidateFeedback,
-        boolean cvAvailable
+        boolean cvAvailable,
+        Long version
 ) {}

@@ -82,7 +82,9 @@ export default function InterviewerDashboard() {
     setInterviewsError('');
     try {
       const response = await api.get('/interviewer/interviews');
-      setInterviews(Array.isArray(response.data) ? response.data : []);
+      const records = Array.isArray(response.data) ? response.data : [];
+      setInterviews(records);
+      return records;
     } catch (requestError) {
       setInterviewsError(requestError.response?.data?.message || 'Could not load assigned interviews.');
     } finally {
@@ -95,7 +97,9 @@ export default function InterviewerDashboard() {
     setTasksError('');
     try {
       const response = await api.get('/interviewer/tasks');
-      setTasks(Array.isArray(response.data) ? response.data : []);
+      const records = Array.isArray(response.data) ? response.data : [];
+      setTasks(records);
+      return records;
     } catch (requestError) {
       setTasksError(requestError.response?.data?.message || 'Could not load submitted tasks.');
     } finally {
@@ -123,9 +127,11 @@ export default function InterviewerDashboard() {
     setReviewingId(applicationId);
     setTasksError('');
     try {
-      await api.put(`/interviewer/applications/${applicationId}/task-review`, { decision });
+      const task = tasks.find((item) => item.applicationId === applicationId);
+      await api.put(`/interviewer/applications/${applicationId}/task-review`, { decision, version: task?.version });
       setTasks((current) => current.filter((task) => task.applicationId !== applicationId));
     } catch (requestError) {
+      if (requestError.response?.status === 409) await loadTasks();
       setTasksError(requestError.response?.data?.message || 'Could not review this task.');
     } finally {
       setReviewingId(null);
@@ -150,11 +156,17 @@ export default function InterviewerDashboard() {
     setFeedbackBusy(true);
     setFeedbackError('');
     try {
-      const response = await api.put(`/interviewer/interviews/${selectedInterview.interviewId}/feedback`, { feedback: feedback.trim() });
+      const response = await api.put(`/interviewer/interviews/${selectedInterview.interviewId}/feedback`, {
+        feedback: feedback.trim(), version: selectedInterview.version,
+      });
       setInterviews((current) => current.map((item) => item.interviewId === response.data.interviewId ? response.data : item));
       setSelectedInterview(null);
       setFeedback('');
     } catch (requestError) {
+      if (requestError.response?.status === 409) {
+        const refreshed = await loadInterviews();
+        setSelectedInterview(refreshed?.find((item) => item.interviewId === selectedInterview.interviewId) || null);
+      }
       setFeedbackError(requestError.response?.data?.message || 'Could not submit interview feedback.');
     } finally {
       setFeedbackBusy(false);
@@ -171,10 +183,16 @@ export default function InterviewerDashboard() {
     setNotesBusy(true);
     setNotesError('');
     try {
-      const response = await api.put(`/interviewer/interviews/${notesInterview.interviewId}/notes`, { interviewerNotes: privateNotes });
+      const response = await api.put(`/interviewer/interviews/${notesInterview.interviewId}/notes`, {
+        interviewerNotes: privateNotes, version: notesInterview.version,
+      });
       setInterviews((current) => current.map((item) => item.interviewId === response.data.interviewId ? response.data : item));
       setNotesInterview(null);
     } catch (requestError) {
+      if (requestError.response?.status === 409) {
+        const refreshed = await loadInterviews();
+        setNotesInterview(refreshed?.find((item) => item.interviewId === notesInterview.interviewId) || null);
+      }
       setNotesError(requestError.response?.data?.message || 'Could not save private notes.');
     } finally {
       setNotesBusy(false);
@@ -191,10 +209,16 @@ export default function InterviewerDashboard() {
     setTaskNotesBusy(true);
     setTaskNotesError('');
     try {
-      const response = await api.put(`/interviewer/applications/${notesTask.applicationId}/task-review-notes`, { taskReviewNotes: taskNotes });
+      const response = await api.put(`/interviewer/applications/${notesTask.applicationId}/task-review-notes`, {
+        taskReviewNotes: taskNotes, version: notesTask.version,
+      });
       setTasks((current) => current.map((item) => item.applicationId === response.data.applicationId ? response.data : item));
       setNotesTask(null);
     } catch (requestError) {
+      if (requestError.response?.status === 409) {
+        const refreshed = await loadTasks();
+        setNotesTask(refreshed?.find((item) => item.applicationId === notesTask.applicationId) || null);
+      }
       setTaskNotesError(requestError.response?.data?.message || 'Could not save private task notes.');
     } finally {
       setTaskNotesBusy(false);

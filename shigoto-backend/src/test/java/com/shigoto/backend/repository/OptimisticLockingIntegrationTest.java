@@ -3,6 +3,7 @@ package com.shigoto.backend.repository;
 import com.shigoto.backend.entity.Application;
 import com.shigoto.backend.entity.Interview;
 import com.shigoto.backend.entity.InterviewStatus;
+import com.shigoto.backend.entity.Job;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.OptimisticLockException;
@@ -111,6 +112,37 @@ class OptimisticLockingIntegrationTest {
 
         Application persisted = find(Application.class, applicationId);
         assertEquals("Winning HR update", persisted.getHrNotes());
+        assertEquals(1L, persisted.getVersion());
+    }
+
+    @Test
+    void staleJobUpdateFailsAndWinningValuesRemain() {
+        EntityManager winnerManager = entityManagerFactory.createEntityManager();
+        EntityManager staleManager = entityManagerFactory.createEntityManager();
+        try {
+            winnerManager.getTransaction().begin();
+            staleManager.getTransaction().begin();
+            Job winner = winnerManager.find(Job.class, jobId);
+            Job stale = staleManager.find(Job.class, jobId);
+            assertEquals(0L, winner.getVersion());
+            assertEquals(0L, stale.getVersion());
+
+            winner.setTitle("Winning job title");
+            winnerManager.getTransaction().commit();
+            assertEquals(1L, winner.getVersion());
+
+            stale.setDescription("Stale job description");
+            RollbackException exception = assertThrows(
+                    RollbackException.class, staleManager.getTransaction()::commit);
+            assertInstanceOf(OptimisticLockException.class, exception.getCause());
+        } finally {
+            rollbackAndClose(winnerManager);
+            rollbackAndClose(staleManager);
+        }
+
+        Job persisted = find(Job.class, jobId);
+        assertEquals("Winning job title", persisted.getTitle());
+        assertEquals(null, persisted.getDescription());
         assertEquals(1L, persisted.getVersion());
     }
 

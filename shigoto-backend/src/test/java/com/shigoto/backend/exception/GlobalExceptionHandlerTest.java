@@ -2,6 +2,7 @@ package com.shigoto.backend.exception;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
@@ -36,5 +37,24 @@ class GlobalExceptionHandlerTest {
         assertEquals(409, response.getBody().status());
         assertEquals("This record was updated by another user. Refresh and try again.",
                 response.getBody().message());
+    }
+
+    @Test
+    void unrelatedDatabaseConstraintIsSanitizedAsBadRequest() {
+        var response = handler.handleDataIntegrityViolation(
+                new DataIntegrityViolationException("internal database detail"));
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals("Request violates a data constraint", response.getBody().message());
+    }
+
+    @Test
+    void applicationWithInterviewHistoryCannotBeDeleted() {
+        var response = handler.handleApplicationDeleteConflict(
+                new ApplicationDeleteConflictException("Application has interview history and cannot be deleted"));
+
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        assertEquals(409, response.getBody().status());
+        assertEquals("Application has interview history and cannot be deleted", response.getBody().message());
     }
 }

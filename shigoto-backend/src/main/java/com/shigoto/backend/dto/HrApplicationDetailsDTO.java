@@ -15,6 +15,8 @@ public record HrApplicationDetailsDTO(
         LocalDateTime taskDeadline,
         String taskInstructions,
         String taskRepoUrl,
+        Long taskReviewerId,
+        String taskReviewerName,
         String candidateFeedback,
         Long candidateId,
         String firstName,
@@ -30,7 +32,8 @@ public record HrApplicationDetailsDTO(
         String location,
         String companyName,
         boolean cvAvailable,
-        GithubAnalysisDTO githubAnalysis
+        GithubAnalysisDTO githubAnalysis,
+        Long version
 ) {
     public static HrApplicationDetailsDTO from(Application application) {
         var candidate = application.getCandidate();
@@ -38,13 +41,18 @@ public record HrApplicationDetailsDTO(
         return new HrApplicationDetailsDTO(
                 application.getId(), application.getStatus(), application.getAppliedAt(),
                 application.getCoverLetter(), application.getHrNotes(), application.getTaskDeadline(),
-                application.getTaskInstructions(), application.getTaskRepoUrl(), application.getCandidateFeedback(),
+                application.getTaskInstructions(), application.getTaskRepoUrl(),
+                application.getTaskReviewer() == null ? null : application.getTaskReviewer().getId(),
+                application.getTaskReviewer() == null ? null
+                        : (application.getTaskReviewer().getFirstName() + " "
+                        + application.getTaskReviewer().getLastName()).trim(),
+                application.getCandidateFeedback(),
                 candidate.getId(), candidate.getFirstName(),
                 candidate.getLastName(), candidate.getEmail(), candidate.getGithubProfileUrl(),
                 candidate.getCurrentTitle(), candidate.getDesiredRole(), candidate.getEmploymentType(),
                 candidate.isStudent(), job.getId(), job.getTitle(), job.getLocation(),
                 job.getCompany().getName(), application.getCvUrl() != null && !application.getCvUrl().isBlank(),
-                GithubAnalysisDTO.from(candidate.getGithubData())
+                GithubAnalysisDTO.from(candidate.getGithubData()), application.getVersion()
         );
     }
 }

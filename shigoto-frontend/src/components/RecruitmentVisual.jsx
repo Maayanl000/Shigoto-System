@@ -19,7 +19,7 @@ export default function RecruitmentVisual() {
             <Typography variant="caption" color="text.secondary">Recruitment pipeline</Typography>
             <Typography variant="h6">Engineering team</Typography>
           </Box>
-          <Chip label="Local UI preview" size="small" color="secondary" variant="outlined" />
+          <Chip label="Hiring workflow" size="small" color="secondary" variant="outlined" />
         </Stack>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
           {stages.map((stage) => (
@@ -34,7 +34,7 @@ export default function RecruitmentVisual() {
             <Avatar sx={{ bgcolor: 'primary.main' }}>AM</Avatar>
             <Box sx={{ flex: 1 }}>
               <Typography variant="body2" fontWeight={700}>Frontend Developer</Typography>
-              <Typography variant="caption" color="text.secondary">Technical interview · Candidate preview</Typography>
+              <Typography variant="caption" color="text.secondary">Technical interview · Candidate review</Typography>
             </Box>
             <CheckCircleRoundedIcon color="secondary" />
           </Stack>

@@ -7,6 +7,7 @@ import SaveRoundedIcon from '@mui/icons-material/SaveRounded';
 import PageSkeleton from '../components/PageSkeleton';
 import api from '../services/api';
 import { hasDisplayValue } from '../utils/displayValue';
+import { homeTaskValidationMessage, interviewValidationMessage } from '../utils/validationFeedback';
 
 const statusLabels = {
   APPLIED: 'Applied', HR_INTERVIEW: 'HR interview', TASK_SENT: 'Task sent',
@@ -37,6 +38,10 @@ function toLocalDateTimeInput(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? ''
     : new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+function minimumLocalDateTime() {
+  return toLocalDateTimeInput(new Date());
 }
 
 function Detail({ label, value }) {
@@ -82,6 +87,8 @@ export default function CandidateDetails() {
   const [statusMessage, setStatusMessage] = useState('');
   const [taskDeadline, setTaskDeadline] = useState('');
   const [taskInstructions, setTaskInstructions] = useState('');
+  const [taskReviewerId, setTaskReviewerId] = useState('');
+  const [taskMessage, setTaskMessage] = useState('');
   const [editingTaskDeadline, setEditingTaskDeadline] = useState(false);
   const [deadlineBusy, setDeadlineBusy] = useState(false);
   const [interviewers, setInterviewers] = useState([]);
@@ -119,11 +126,17 @@ export default function CandidateDetails() {
     TASK_SENT: [{ label: 'Reject', status: 'REJECTED' }],
     TASK_SUBMITTED: [{ label: 'Reject', status: 'REJECTED' }],
     TASK_APPROVED: [{ label: 'Reject', status: 'REJECTED' }],
-    TECH_INTERVIEW_SCHEDULED: [{ label: 'Make offer', status: 'OFFER' }, { label: 'Reject', status: 'REJECTED' }],
+    TECH_INTERVIEW_SCHEDULED: [
+      ...(interviews.some((interview) => interview.type === 'TECHNICAL' && interview.status === 'COMPLETED')
+        ? [{ label: 'Make offer', status: 'OFFER' }] : []),
+      { label: 'Reject', status: 'REJECTED' },
+    ],
     OFFER: [{ label: 'Mark as hired', status: 'HIRED' }],
   }[record.status] || [] : [];
+  const hasHomeTask = Boolean(record?.taskInstructions || record?.taskDeadline
+    || record?.taskRepoUrl || record?.taskReviewerId);
   const schedulableTypes = record ? {
-    APPLIED: ['HR'], HR_INTERVIEW: ['TECHNICAL'], TASK_APPROVED: ['TECHNICAL'],
+    APPLIED: ['HR'], HR_INTERVIEW: hasHomeTask ? [] : ['TECHNICAL'], TASK_APPROVED: ['TECHNICAL'],
     TECH_INTERVIEW_SCHEDULED: ['MANAGER'],
   }[record.status] || [] : [];
   const showTaskSection = record && (
@@ -199,6 +212,12 @@ export default function CandidateDetails() {
     }
   }, [applicationId]);
 
+  const refreshAfterConflict = async (requestError) => {
+    if (requestError.response?.status === 409) {
+      await Promise.allSettled([loadRecord(), loadInterviews()]);
+    }
+  };
+
   useEffect(() => {
     let active = true;
     api.get(`/hr/applications/${applicationId}/interviews`)
@@ -242,11 +261,12 @@ export default function CandidateDetails() {
     setSavingNotes(true);
     setNotesMessage('');
     try {
-      const response = await api.put(`/hr/applications/${applicationId}/notes`, { hrNotes: notes });
+      const response = await api.put(`/hr/applications/${applicationId}/notes`, { hrNotes: notes, version: record.version });
       setRecord(response.data);
       setNotes(response.data.hrNotes || '');
       setNotesMessage('Notes saved.');
     } catch (requestError) {
+      await refreshAfterConflict(requestError);
       setNotesMessage(requestError.response?.data?.message || 'Could not save HR notes.');
     } finally {
       setSavingNotes(false);
@@ -257,10 +277,11 @@ export default function CandidateDetails() {
     setStatusBusy(true);
     setStatusMessage('');
     try {
-      const response = await api.put(`/hr/applications/${applicationId}/status`, { status });
+      const response = await api.put(`/hr/applications/${applicationId}/status`, { status, version: record.version });
       setRecord(response.data);
       setStatusMessage(`Status updated to ${statusLabels[response.data.status] || response.data.status}.`);
     } catch (requestError) {
+      await refreshAfterConflict(requestError);
       setStatusMessage(requestError.response?.data?.message || 'Could not update the application status.');
     } finally {
       setStatusBusy(false);
@@ -273,12 +294,14 @@ export default function CandidateDetails() {
     try {
       const response = await api.put(`/hr/applications/${applicationId}/reject`, {
         candidateFeedback: candidateFeedbackDraft.trim() || null,
+        version: record.version,
       });
       setRecord(response.data);
       setCandidateFeedbackDraft(response.data.candidateFeedback || '');
       setRejectOpen(false);
       setStatusMessage('Candidate rejected.');
     } catch (requestError) {
+      await refreshAfterConflict(requestError);
       setStatusMessage(requestError.response?.data?.message || 'Could not reject the candidate.');
     } finally {
       setCandidateFeedbackBusy(false);
@@ -291,11 +314,13 @@ export default function CandidateDetails() {
     try {
       const response = await api.put(`/hr/applications/${applicationId}/candidate-feedback`, {
         candidateFeedback: candidateFeedbackDraft.trim() || null,
+        version: record.version,
       });
       setRecord(response.data);
       setCandidateFeedbackDraft(response.data.candidateFeedback || '');
       setCandidateFeedbackMessage('Candidate feedback saved.');
     } catch (requestError) {
+      await refreshAfterConflict(requestError);
       setCandidateFeedbackMessage(requestError.response?.data?.message || 'Could not save candidate feedback.');
     } finally {
       setCandidateFeedbackBusy(false);
@@ -303,28 +328,30 @@ export default function CandidateDetails() {
   };
 
   const sendHomeTask = async () => {
-    if (!taskInstructions.trim()) {
-      setStatusMessage('Enter task instructions before sending the home task.');
-      return;
-    }
-    const parsedDeadline = new Date(taskDeadline);
-    if (!taskDeadline || Number.isNaN(parsedDeadline.getTime()) || parsedDeadline <= new Date()) {
-      setStatusMessage('Choose a future deadline before sending the home task.');
+    const validationMessage = homeTaskValidationMessage({
+      instructions: taskInstructions, reviewerId: taskReviewerId, deadline: taskDeadline,
+    });
+    if (validationMessage) {
+      setTaskMessage(validationMessage);
       return;
     }
     setStatusBusy(true);
-    setStatusMessage('');
+    setTaskMessage('');
     try {
       const response = await api.post(`/hr/applications/${applicationId}/home-task`, {
         taskInstructions: taskInstructions.trim(),
         deadline: taskDeadline || null,
+        reviewerId: Number(taskReviewerId),
+        version: record.version,
       });
       setRecord(response.data);
       setTaskDeadline('');
       setTaskInstructions('');
-      setStatusMessage('Home task sent.');
+      setTaskReviewerId('');
+      setTaskMessage('Home task sent.');
     } catch (requestError) {
-      setStatusMessage(requestError.response?.data?.message || 'Could not send the home task.');
+      await refreshAfterConflict(requestError);
+      setTaskMessage(requestError.response?.data?.message || 'Could not send the home task.');
     } finally {
       setStatusBusy(false);
     }
@@ -333,48 +360,49 @@ export default function CandidateDetails() {
   const updateHomeTaskDeadline = async () => {
     const parsedDeadline = new Date(taskDeadline);
     if (!taskDeadline || Number.isNaN(parsedDeadline.getTime()) || parsedDeadline <= new Date()) {
-      setStatusMessage('Choose a future deadline before updating the home task.');
+      setTaskMessage('The home task deadline must be in the future.');
       return;
     }
     setDeadlineBusy(true);
-    setStatusMessage('');
+    setTaskMessage('');
     try {
       const response = await api.put(`/hr/applications/${applicationId}/home-task/deadline`, {
         deadline: taskDeadline,
+        version: record.version,
       });
       setRecord(response.data);
       setEditingTaskDeadline(false);
       setTaskDeadline('');
-      setStatusMessage('Home task deadline updated.');
+      setTaskMessage('Home task deadline updated.');
     } catch (requestError) {
-      setStatusMessage(requestError.response?.data?.message || 'Could not update the home task deadline.');
+      await refreshAfterConflict(requestError);
+      setTaskMessage(requestError.response?.data?.message || 'Could not update the home task deadline.');
     } finally {
       setDeadlineBusy(false);
     }
   };
 
   const scheduleInterview = async () => {
-    const scheduledAt = new Date(interviewTime);
-    if ((!editingInterviewId && !selectedInterviewType) || !interviewerId || !interviewTime || Number.isNaN(scheduledAt.getTime())
-      || scheduledAt <= new Date() || !meetingLink.trim()) {
-      setInterviewMessage('Choose an interviewer, future time, type, and meeting URL.');
-      return;
-    }
-    try {
-      const url = new URL(meetingLink.trim());
-      if (!['http:', 'https:'].includes(url.protocol)) throw new Error('invalid');
-    } catch {
-      setInterviewMessage('Enter a valid HTTP or HTTPS meeting URL.');
+    const validationMessage = interviewValidationMessage({
+      editing: Boolean(editingInterviewId), type: selectedInterviewType,
+      interviewerId, interviewTime, meetingLink,
+    });
+    if (validationMessage) {
+      setInterviewMessage(validationMessage);
       return;
     }
     setInterviewBusy(true);
     setInterviewMessage('');
     try {
-      const payload = { interviewerId: Number(interviewerId), scheduledAt: interviewTime, meetingLink: meetingLink.trim() };
+      const editedInterview = interviews.find((item) => item.interviewId === editingInterviewId);
+      const payload = {
+        interviewerId: Number(interviewerId), scheduledAt: interviewTime, meetingLink: meetingLink.trim(),
+        ...(editingInterviewId ? { version: editedInterview?.version } : { applicationVersion: record.version }),
+      };
       const response = editingInterviewId
         ? await api.put(`/hr/interviews/${editingInterviewId}`, payload)
         : await api.post(`/hr/applications/${applicationId}/interviews`, { ...payload, type: selectedInterviewType });
-      setRecord((current) => ({ ...current, status: response.data.applicationStatus }));
+      setRecord((current) => ({ ...current, status: response.data.applicationStatus, version: response.data.applicationVersion }));
       setInterviewerId('');
       setInterviewTime('');
       setMeetingLink('');
@@ -383,6 +411,7 @@ export default function CandidateDetails() {
       setInterviewMessage(editingInterviewId ? 'Interview rescheduled.' : 'Interview scheduled.');
       await loadInterviews();
     } catch (requestError) {
+      await refreshAfterConflict(requestError);
       setInterviewMessage(requestError.response?.data?.message || 'Could not schedule the interview.');
     } finally {
       setInterviewBusy(false);
@@ -415,11 +444,13 @@ export default function CandidateDetails() {
     setInterviewBusy(true);
     setInterviewMessage('');
     try {
-      const response = await api.put(`/hr/interviews/${interviewId}/cancel`);
-      setRecord((current) => ({ ...current, status: response.data.applicationStatus }));
+      const interview = interviews.find((item) => item.interviewId === interviewId);
+      const response = await api.put(`/hr/interviews/${interviewId}/cancel`, null, { params: { version: interview?.version } });
+      setRecord((current) => ({ ...current, status: response.data.applicationStatus, version: response.data.applicationVersion }));
       setInterviewMessage('Interview canceled.');
       await loadInterviews();
     } catch (requestError) {
+      await refreshAfterConflict(requestError);
       setInterviewMessage(requestError.response?.data?.message || 'Could not cancel the interview.');
     } finally {
       setInterviewBusy(false);
@@ -492,7 +523,7 @@ export default function CandidateDetails() {
                 {record.status === 'TASK_SENT' && (!editingTaskDeadline ? (
                   <Button variant="outlined" onClick={() => {
                     setTaskDeadline(toLocalDateTimeInput(record.taskDeadline));
-                    setStatusMessage('');
+                    setTaskMessage('');
                     setEditingTaskDeadline(true);
                   }}>Update deadline</Button>
                 ) : (
@@ -501,16 +532,17 @@ export default function CandidateDetails() {
                       label="Updated home task deadline"
                       type="datetime-local"
                       value={taskDeadline}
-                      onChange={(event) => { setTaskDeadline(event.target.value); setStatusMessage(''); }}
-                      slotProps={{ inputLabel: { shrink: true } }}
+                      onChange={(event) => { setTaskDeadline(event.target.value); setTaskMessage(''); }}
+                      slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: minimumLocalDateTime() } }}
                     />
                     <Stack direction="row" spacing={1}>
                       <Button variant="contained" onClick={updateHomeTaskDeadline} disabled={deadlineBusy || !taskDeadline}>{deadlineBusy ? 'Updating…' : 'Save deadline'}</Button>
-                      <Button onClick={() => { setEditingTaskDeadline(false); setTaskDeadline(''); setStatusMessage(''); }} disabled={deadlineBusy}>Cancel</Button>
+                      <Button onClick={() => { setEditingTaskDeadline(false); setTaskDeadline(''); setTaskMessage(''); }} disabled={deadlineBusy}>Cancel</Button>
                     </Stack>
                   </Stack>
                 ))}
                 {record.taskRepoUrl && <Link href={record.taskRepoUrl} target="_blank" rel="noopener noreferrer">Submitted repository</Link>}
+                {record.taskReviewerName && <Detail label="Assigned reviewer" value={record.taskReviewerName} />}
                 {record.status === 'HR_INTERVIEW' && (
                   <Stack spacing={1.25}>
                     <TextField
@@ -518,20 +550,26 @@ export default function CandidateDetails() {
                       multiline
                       minRows={5}
                       value={taskInstructions}
-                      onChange={(event) => { setTaskInstructions(event.target.value); setStatusMessage(''); }}
+                      onChange={(event) => { setTaskInstructions(event.target.value); setTaskMessage(''); }}
                       inputProps={{ maxLength: 10000 }}
                       helperText={`${taskInstructions.length}/10000`}
                     />
+                    <TextField select label="Task reviewer" value={taskReviewerId} onChange={(event) => { setTaskReviewerId(event.target.value); setTaskMessage(''); }}>
+                      {interviewers.map((interviewer) => <MenuItem key={interviewer.interviewerId} value={interviewer.interviewerId}>{interviewer.fullName} · {interviewer.email}</MenuItem>)}
+                    </TextField>
+                    {interviewersLoading && <Typography variant="caption" color="text.secondary">Loading reviewers…</Typography>}
+                    {interviewersError && <Alert severity="error">{interviewersError}</Alert>}
                     <TextField
                       label="Home task deadline"
                       type="datetime-local"
                       value={taskDeadline}
-                      onChange={(event) => { setTaskDeadline(event.target.value); setStatusMessage(''); }}
-                      slotProps={{ inputLabel: { shrink: true } }}
+                      onChange={(event) => { setTaskDeadline(event.target.value); setTaskMessage(''); }}
+                      slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: minimumLocalDateTime() } }}
                     />
-                    <Button variant="contained" onClick={sendHomeTask} disabled={statusBusy || !taskDeadline || !taskInstructions.trim()}>Send home task</Button>
+                    <Button variant="contained" onClick={sendHomeTask} disabled={statusBusy || interviewersLoading}>Send home task</Button>
                   </Stack>
                 )}
+                {taskMessage && <Alert severity={['Home task sent.', 'Home task deadline updated.'].includes(taskMessage) ? 'success' : 'error'}>{taskMessage}</Alert>}
               </Stack>
             </CardContent></Card>
           </Grid>}
@@ -581,8 +619,8 @@ export default function CandidateDetails() {
                       <TextField select label="Interviewer" value={interviewerId} onChange={(event) => setInterviewerId(event.target.value)}>
                         {interviewers.map((interviewer) => <MenuItem key={interviewer.interviewerId} value={interviewer.interviewerId}>{interviewer.fullName} · {interviewer.email}</MenuItem>)}
                       </TextField>
-                      <TextField label="Date and time" type="datetime-local" value={interviewTime} onChange={(event) => setInterviewTime(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
-                      <TextField label="Meeting URL" value={meetingLink} onChange={(event) => setMeetingLink(event.target.value)} placeholder="https://meet.example.com/interview" />
+                      <TextField label="Date and time" type="datetime-local" value={interviewTime} onChange={(event) => setInterviewTime(event.target.value)} slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: minimumLocalDateTime() } }} />
+                      <TextField label="Meeting URL" value={meetingLink} onChange={(event) => setMeetingLink(event.target.value)} inputProps={{ maxLength: 255 }} placeholder="https://meet.example.com/interview" />
                       <Stack direction="row" spacing={1}>
                         <Button variant="contained" onClick={scheduleInterview} disabled={interviewBusy}>{interviewBusy ? 'Saving…' : editingInterviewId ? 'Save reschedule' : 'Schedule interview'}</Button>
                         {editingInterviewId && <Button onClick={() => setEditingInterviewId(null)}>Cancel edit</Button>}
@@ -633,7 +671,7 @@ export default function CandidateDetails() {
           <Grid size={{ xs: 12 }}>
             <Card><CardContent>
               <Typography variant="h6" gutterBottom>Internal HR notes</Typography>
-              <TextField multiline minRows={4} fullWidth value={notes} onChange={(event) => { setNotes(event.target.value); setNotesMessage(''); }} inputProps={{ maxLength: 10000 }} placeholder="Add private notes for the HR team" />
+              <TextField multiline minRows={4} fullWidth value={notes} onChange={(event) => { setNotes(event.target.value); setNotesMessage(''); }} inputProps={{ maxLength: 10000 }} helperText={`${notes.length}/10000`} placeholder="Add private notes for the HR team" />
               <Stack direction="row" alignItems="center" spacing={2} sx={{ mt: 2 }}>
                 <Button variant="contained" startIcon={<SaveRoundedIcon />} onClick={saveNotes} disabled={savingNotes}>{savingNotes ? 'Saving…' : 'Save notes'}</Button>
                 {notesMessage && <Typography variant="body2" color={notesMessage === 'Notes saved.' ? 'success.main' : 'error.main'}>{notesMessage}</Typography>}
@@ -649,8 +687,8 @@ export default function CandidateDetails() {
                 <TextField select label="Interviewer" value={interviewerId} onChange={(event) => setInterviewerId(event.target.value)}>
                   {interviewers.map((interviewer) => <MenuItem key={interviewer.interviewerId} value={interviewer.interviewerId}>{interviewer.fullName} · {interviewer.email}</MenuItem>)}
                 </TextField>
-                <TextField label="Date and time" type="datetime-local" value={interviewTime} onChange={(event) => setInterviewTime(event.target.value)} slotProps={{ inputLabel: { shrink: true } }} />
-                <TextField label="Meeting URL" value={meetingLink} onChange={(event) => setMeetingLink(event.target.value)} placeholder="https://meet.example.com/interview" />
+                <TextField label="Date and time" type="datetime-local" value={interviewTime} onChange={(event) => setInterviewTime(event.target.value)} slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: minimumLocalDateTime() } }} />
+                <TextField label="Meeting URL" value={meetingLink} onChange={(event) => setMeetingLink(event.target.value)} inputProps={{ maxLength: 255 }} placeholder="https://meet.example.com/interview" />
                 {interviewMessage && <Alert severity="error">{interviewMessage}</Alert>}
               </Stack>
             </DialogContent>

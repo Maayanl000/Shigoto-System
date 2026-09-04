@@ -3,10 +3,10 @@ import PageSkeleton from '../components/PageSkeleton';
 
 export default function ApplicationForm() {
   return (
-    <PageSkeleton title="Job Application" description="Application form skeleton for a selected open position.">
+    <PageSkeleton title="Job Application" description="Apply for a selected open position.">
       <Card sx={{ maxWidth: 880 }}>
         <CardContent sx={{ display: 'grid', gap: 2.5 }}>
-          <Alert severity="info" icon={false}>Preview only — application details cannot be submitted yet.</Alert>
+          <Alert severity="info" icon={false}>Choose an open job from the Jobs page to submit an application.</Alert>
           <Typography variant="h6">Selected Position</Typography>
           <Typography color="text.secondary">Job title, team, location, and description will be loaded here.</Typography>
           <Divider />

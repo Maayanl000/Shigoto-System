@@ -2,6 +2,7 @@ package com.shigoto.backend.exception;
 
 import com.shigoto.backend.dto.ErrorResponseDTO;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.AuthenticationException;
@@ -58,6 +59,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponseDTO> handleInterviewSlotConflict(
             InterviewSlotConflictException ex) {
         return buildErrorResponse(ex.getMessage(), HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(ApplicationDeleteConflictException.class)
+    public ResponseEntity<ErrorResponseDTO> handleApplicationDeleteConflict(
+            ApplicationDeleteConflictException ex) {
+        return buildErrorResponse(ex.getMessage(), HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponseDTO> handleDataIntegrityViolation(
+            DataIntegrityViolationException ex) {
+        return buildErrorResponse("Request violates a data constraint", HttpStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(AuthenticationException.class)

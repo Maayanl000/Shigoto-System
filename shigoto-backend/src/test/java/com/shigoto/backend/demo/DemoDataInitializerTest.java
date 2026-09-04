@@ -32,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -98,14 +99,14 @@ class DemoDataInitializerTest {
         initializer.run();
 
         assertEquals(3, companies.size());
-        assertEquals(14, users.size());
+        assertEquals(13, users.size());
         assertEquals(8, jobs.size());
         assertEquals(8, applications.size());
         assertEquals(2, interviews.size());
 
         assertEquals(Role.HR, users.get("rachel.green@nvidia.demo").getRole());
         assertEquals("NVIDIA", users.get("rachel.green@nvidia.demo").getCompany().getName());
-        assertEquals(Role.HR, users.get("monica.geller@nvidia.demo").getRole());
+        assertFalse(users.containsKey("monica.geller@nvidia.demo"));
         assertEquals(Role.INTERVIEWER, users.get("gunther@nvidia.demo").getRole());
         assertEquals("Gunther", users.get("gunther@nvidia.demo").getFirstName());
         assertEquals("", users.get("gunther@nvidia.demo").getLastName());
@@ -122,7 +123,7 @@ class DemoDataInitializerTest {
         assertEquals(Role.HR, users.get("ross.geller@google.demo").getRole());
         assertEquals(Role.INTERVIEWER, users.get("phoebe.buffay@google.demo").getRole());
         assertNull(users.get("eren.yeager@candidate.demo").getCompany());
-        assertEquals(2, countUsers(Role.HR, "NVIDIA"));
+        assertEquals(1, countUsers(Role.HR, "NVIDIA"));
         assertEquals(2, countUsers(Role.INTERVIEWER, "NVIDIA"));
         assertEquals(1, countUsers(Role.HR, "Microsoft"));
         assertEquals(2, countUsers(Role.INTERVIEWER, "Microsoft"));
@@ -175,11 +176,44 @@ class DemoDataInitializerTest {
         assertTrue(manager.getScheduledAt().isAfter(technical.getScheduledAt()));
 
         verify(companyRepository, times(3)).save(any(Company.class));
-        verify(userRepository, times(14)).save(any(User.class));
-        verify(passwordEncoder, times(14)).encode(DemoDataInitializer.DEMO_PASSWORD);
+        verify(userRepository, times(13)).save(any(User.class));
+        verify(passwordEncoder, times(13)).encode(DemoDataInitializer.DEMO_PASSWORD);
         verify(jobRepository, times(8)).save(any(Job.class));
         verify(applicationRepository, times(8)).save(any(Application.class));
         verify(interviewRepository, times(2)).save(any(Interview.class));
+    }
+
+    @Test
+    void rejectsExistingCompanyWithMultipleHrUsersWithoutDeletingEither() {
+        Company nvidia = Company.builder().id(100L).name("NVIDIA").build();
+        companies.put(nvidia.getName(), nvidia);
+        users.put("rachel.green@nvidia.demo", User.builder().id(101L).firstName("Rachel")
+                .lastName("Green").email("rachel.green@nvidia.demo").password("encoded-demo-password")
+                .role(Role.HR).company(nvidia).build());
+        users.put("monica.geller@nvidia.demo", User.builder().id(102L).firstName("Monica")
+                .lastName("Geller").email("monica.geller@nvidia.demo").password("encoded-demo-password")
+                .role(Role.HR).company(nvidia).build());
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class, initializer::run);
+
+        assertTrue(failure.getMessage().contains("manual cleanup is required"));
+        assertEquals(2, countUsers(Role.HR, "NVIDIA"));
+    }
+
+    @Test
+    void preservesAnExistingSoleCompanyHrInsteadOfCreatingThePreferredSeed() throws Exception {
+        Company nvidia = Company.builder().id(100L).name("NVIDIA").build();
+        companies.put(nvidia.getName(), nvidia);
+        users.put("monica.geller@nvidia.demo", User.builder().id(102L).firstName("Monica")
+                .lastName("Geller").email("monica.geller@nvidia.demo").password("existing-password")
+                .role(Role.HR).company(nvidia).build());
+
+        initializer.run();
+
+        assertTrue(users.containsKey("monica.geller@nvidia.demo"));
+        assertFalse(users.containsKey("rachel.green@nvidia.demo"));
+        assertEquals(1, countUsers(Role.HR, "NVIDIA"));
+        assertEquals(2, countUsers(Role.INTERVIEWER, "NVIDIA"));
     }
 
     private Map<String, ApplicationTimestamps> applicationTimestamps() {
@@ -223,6 +257,18 @@ class DemoDataInitializerTest {
             users.put(user.getEmail(), user);
             return user;
         });
+        when(userRepository.findByRoleAndCompanyOrderByFirstNameAscLastNameAsc(
+                any(Role.class), any(Company.class))).thenAnswer(invocation -> {
+                    Role role = invocation.getArgument(0);
+                    Company company = invocation.getArgument(1);
+                    return users.values().stream()
+                            .filter(user -> user.getRole() == role)
+                            .filter(user -> user.getCompany() != null)
+                            .filter(user -> user.getCompany().getId().equals(company.getId()))
+                            .sorted(java.util.Comparator.comparing(User::getFirstName)
+                                    .thenComparing(User::getLastName))
+                            .toList();
+                });
     }
 
     private void configureJobRepository() {

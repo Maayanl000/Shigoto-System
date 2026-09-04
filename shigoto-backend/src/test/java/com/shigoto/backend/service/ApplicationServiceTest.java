@@ -17,6 +17,7 @@ import com.shigoto.backend.dto.ApplicationResponseDTO;
 import com.shigoto.backend.dto.HrApplicationDetailsDTO;
 import com.shigoto.backend.dto.HrApplicationSummaryDTO;
 import com.shigoto.backend.exception.DuplicateApplicationException;
+import com.shigoto.backend.exception.ApplicationDeleteConflictException;
 import com.shigoto.backend.exception.ResourceNotFoundException;
 import com.shigoto.backend.repository.ApplicationRepository;
 import com.shigoto.backend.repository.JobRepository;
@@ -31,6 +32,7 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -78,15 +80,15 @@ class ApplicationServiceTest {
     void submitsTaskAndAdvancesStatus() {
         Application application = assignedApplication(LocalDateTime.now().plusHours(1));
         when(applicationRepository.findById(1L)).thenReturn(Optional.of(application));
-        when(applicationRepository.save(application)).thenReturn(application);
+        when(applicationRepository.saveAndFlush(application)).thenReturn(application);
 
         var response = applicationService.submitTask(
-                1L, " https://github.com/example/home-task ", application.getCandidate());
+                1L, " https://github.com/example/home-task ", 0L, application.getCandidate());
 
         assertEquals(ApplicationStatus.TASK_SUBMITTED, response.status());
         assertEquals("Implement the documented API", response.taskInstructions());
         assertEquals("https://github.com/example/home-task", response.taskRepoUrl());
-        verify(applicationRepository).save(application);
+        verify(applicationRepository).saveAndFlush(application);
     }
 
     @Test
@@ -94,7 +96,7 @@ class ApplicationServiceTest {
         when(applicationRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class,
-                () -> applicationService.submitTask(99L, "https://github.com/example/repo", candidate(3L)));
+                () -> applicationService.submitTask(99L, "https://github.com/example/repo", 0L, candidate(3L)));
     }
 
     @Test
@@ -105,8 +107,8 @@ class ApplicationServiceTest {
 
         assertThrows(IllegalArgumentException.class,
                 () -> applicationService.submitTask(
-                        1L, "https://github.com/example/repo", application.getCandidate()));
-        verify(applicationRepository, never()).save(application);
+                        1L, "https://github.com/example/repo", 0L, application.getCandidate()));
+        verify(applicationRepository, never()).saveAndFlush(application);
     }
 
     @Test
@@ -117,7 +119,7 @@ class ApplicationServiceTest {
 
         assertThrows(IllegalArgumentException.class,
                 () -> applicationService.submitTask(
-                        1L, "https://github.com/example/repo", application.getCandidate()));
+                        1L, "https://github.com/example/repo", 0L, application.getCandidate()));
     }
 
     @Test
@@ -125,11 +127,11 @@ class ApplicationServiceTest {
         Application application = assignedApplication(null);
         when(applicationRepository.findById(1L)).thenReturn(Optional.of(application));
         assertThrows(IllegalArgumentException.class, () -> applicationService.submitTask(
-                1L, "https://github.com/example/repo", application.getCandidate()));
+                1L, "https://github.com/example/repo", 0L, application.getCandidate()));
 
         application.setTaskDeadline(LocalDateTime.now().minusSeconds(1));
         assertThrows(IllegalArgumentException.class, () -> applicationService.submitTask(
-                1L, "https://github.com/example/repo", application.getCandidate()));
+                1L, "https://github.com/example/repo", 0L, application.getCandidate()));
     }
 
     @Test
@@ -138,13 +140,30 @@ class ApplicationServiceTest {
         when(applicationRepository.findById(1L)).thenReturn(Optional.of(application));
 
         User candidate = application.getCandidate();
-        assertThrows(IllegalArgumentException.class, () -> applicationService.submitTask(1L, null, candidate));
-        assertThrows(IllegalArgumentException.class, () -> applicationService.submitTask(1L, " ", candidate));
-        assertThrows(IllegalArgumentException.class, () -> applicationService.submitTask(1L, "not a url", candidate));
+        assertThrows(IllegalArgumentException.class, () -> applicationService.submitTask(1L, null, 0L, candidate));
+        assertThrows(IllegalArgumentException.class, () -> applicationService.submitTask(1L, " ", 0L, candidate));
+        assertThrows(IllegalArgumentException.class, () -> applicationService.submitTask(1L, "not a url", 0L, candidate));
         assertThrows(IllegalArgumentException.class,
-                () -> applicationService.submitTask(1L, "https://example.com/user/repo", candidate));
+                () -> applicationService.submitTask(1L, "https://example.com/user/repo", 0L, candidate));
         assertThrows(IllegalArgumentException.class,
-                () -> applicationService.submitTask(1L, "https://github.com/user", candidate));
+                () -> applicationService.submitTask(1L, "https://github.com/user", 0L, candidate));
+        String oversized = "https://github.com/user/" + "a".repeat(
+                256 - "https://github.com/user/".length());
+        assertThrows(IllegalArgumentException.class,
+                () -> applicationService.submitTask(1L, oversized, 0L, candidate));
+    }
+
+    @Test
+    void repositoryUrlAtDatabaseMaximumIsAccepted() {
+        Application application = assignedApplication(LocalDateTime.now().plusHours(1));
+        when(applicationRepository.findById(1L)).thenReturn(Optional.of(application));
+        when(applicationRepository.saveAndFlush(application)).thenReturn(application);
+        String maximum = "https://github.com/user/" + "a".repeat(
+                255 - "https://github.com/user/".length());
+
+        var response = applicationService.submitTask(1L, maximum, 0L, application.getCandidate());
+
+        assertEquals(255, response.taskRepoUrl().length());
     }
 
     @Test
@@ -157,8 +176,8 @@ class ApplicationServiceTest {
                 () -> applicationService.getOwnedApplicationById(1L, otherCandidate));
         assertThrows(AccessDeniedException.class,
                 () -> applicationService.submitTask(
-                        1L, "https://github.com/example/repo", otherCandidate));
-        verify(applicationRepository, never()).save(application);
+                        1L, "https://github.com/example/repo", 0L, otherCandidate));
+        verify(applicationRepository, never()).saveAndFlush(application);
     }
 
     @Test
@@ -221,6 +240,7 @@ class ApplicationServiceTest {
         when(cvStorageService.store(any())).thenReturn(storageKey);
         when(applicationRepository.saveAndFlush(any(Application.class)))
                 .thenThrow(new DataIntegrityViolationException("duplicate"));
+        when(applicationRepository.existsByCandidateIdAndJobId(3L, 2L)).thenReturn(false, true);
 
         assertThrows(DuplicateApplicationException.class,
                 () -> applicationService.createApplication(candidate, 2L, "Cover", validCv()));
@@ -252,11 +272,43 @@ class ApplicationServiceTest {
         application.setCvUrl("123e4567-e89b-12d3-a456-426614174000.pdf");
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
 
-        applicationService.deleteApplication(1L, hr);
+        applicationService.deleteApplication(1L, 0L, hr);
 
         verify(applicationRepository).delete(application);
         verify(applicationRepository).flush();
         verify(cvStorageService).delete(application.getCvUrl());
+    }
+
+    @Test
+    void applicationWithInterviewHistoryIsNotDeleted() {
+        Company company = Company.builder().id(10L).name("Example Company").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+        when(interviewRepository.existsByApplicationId(1L)).thenReturn(true);
+
+        assertThrows(ApplicationDeleteConflictException.class,
+                () -> applicationService.deleteApplication(1L, 0L, hr));
+
+        verify(applicationRepository, never()).delete(any());
+        verify(cvStorageService, never()).delete(any());
+        verify(interviewRepository).existsByApplicationId(1L);
+    }
+
+    @Test
+    void delayedStaleApplicationNotesAreRejectedWithoutChangingNewestValue() {
+        Company company = Company.builder().id(10L).name("Example Company").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        application.setVersion(2L);
+        application.setHrNotes("newest committed notes");
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+
+        assertThrows(ObjectOptimisticLockingFailureException.class,
+                () -> applicationService.updateHrNotes(1L, "stale browser notes", 1L, hr));
+
+        assertEquals("newest committed notes", application.getHrNotes());
+        verify(applicationRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -266,7 +318,7 @@ class ApplicationServiceTest {
         when(applicationRepository.findByIdAndJobCompany(99L, company)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class,
-                () -> applicationService.deleteApplication(99L, hr));
+                () -> applicationService.deleteApplication(99L, 0L, hr));
 
         verify(applicationRepository, never()).delete(any());
         verify(applicationRepository, never()).flush();
@@ -279,10 +331,10 @@ class ApplicationServiceTest {
         Company otherCompany = Company.builder().id(11L).name("Company B").build();
         User hr = User.builder().id(20L).role(Role.HR).company(company).build();
         User candidate = User.builder().id(3L).role(Role.CANDIDATE).build();
-        Application ownApplication = Application.builder().id(1L).candidate(candidate)
+        Application ownApplication = Application.builder().version(0L).id(1L).candidate(candidate)
                 .job(Job.builder().id(2L).company(company).build()).status(ApplicationStatus.APPLIED)
                 .hrNotes("OWN_PRIVATE_NOTES").build();
-        Application foreignApplication = Application.builder().id(4L).candidate(candidate)
+        Application foreignApplication = Application.builder().version(0L).id(4L).candidate(candidate)
                 .job(Job.builder().id(5L).company(otherCompany).build()).status(ApplicationStatus.APPLIED)
                 .hrNotes("FOREIGN_PRIVATE_NOTES").build();
         when(userRepository.findById(3L)).thenReturn(Optional.of(candidate));
@@ -315,12 +367,12 @@ class ApplicationServiceTest {
         Company otherCompany = Company.builder().id(11L).name("Other").build();
         User hr = User.builder().id(20L).role(Role.HR).company(hrCompany).build();
         LocalDateTime appliedAt = LocalDateTime.of(2026, 8, 20, 10, 30);
-        Application ownCompanyApplication = Application.builder()
+        Application ownCompanyApplication = Application.builder().version(0L)
                 .id(1L).candidate(User.builder().id(3L).firstName("Dana").lastName("Cohen")
                         .role(Role.CANDIDATE).build())
                 .job(Job.builder().id(2L).title("Backend Engineer").company(hrCompany).build())
                 .status(ApplicationStatus.HR_INTERVIEW).appliedAt(appliedAt).build();
-        Application otherCompanyApplication = Application.builder()
+        Application otherCompanyApplication = Application.builder().version(0L)
                 .id(2L).candidate(candidate(4L))
                 .job(Job.builder().id(3L).company(otherCompany).build()).build();
         Interview completedTechnical = Interview.builder().application(ownCompanyApplication)
@@ -367,7 +419,7 @@ class ApplicationServiceTest {
     void hrFiltersApplicationsByJobWithinTheirCompany() {
         Company company = Company.builder().id(10L).name("Shigoto").build();
         User hr = User.builder().id(20L).role(Role.HR).company(company).build();
-        Application application = Application.builder()
+        Application application = Application.builder().version(0L)
                 .id(1L)
                 .candidate(User.builder().id(3L).firstName("Dana").lastName("Cohen")
                         .role(Role.CANDIDATE).build())
@@ -455,13 +507,12 @@ class ApplicationServiceTest {
         User hr = User.builder().id(20L).role(Role.HR).company(company).build();
         Application application = detailedApplication(company);
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
-        when(applicationRepository.save(application)).thenReturn(application);
-
-        var details = applicationService.updateHrNotes(1L, " Follow up next week ", hr);
+        when(applicationRepository.saveAndFlush(application)).thenReturn(application);
+        var details = applicationService.updateHrNotes(1L, " Follow up next week ", 0L, hr);
 
         assertEquals("Follow up next week", details.hrNotes());
         assertEquals(ApplicationStatus.APPLIED, details.status());
-        verify(applicationRepository).save(application);
+        verify(applicationRepository).saveAndFlush(application);
     }
 
     @Test
@@ -471,8 +522,8 @@ class ApplicationServiceTest {
         when(applicationRepository.findByIdAndJobCompany(99L, company)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class,
-                () -> applicationService.updateHrNotes(99L, "Private note", hr));
-        verify(applicationRepository, never()).save(any());
+                () -> applicationService.updateHrNotes(99L, "Private note", 0L, hr));
+        verify(applicationRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -481,10 +532,10 @@ class ApplicationServiceTest {
         User hr = User.builder().id(20L).role(Role.HR).company(company).build();
         Application application = detailedApplication(company);
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
-        when(applicationRepository.save(application)).thenReturn(application);
+        when(applicationRepository.saveAndFlush(application)).thenReturn(application);
 
         var details = applicationService.transitionHrApplicationStatus(
-                1L, ApplicationStatus.HR_INTERVIEW, hr);
+                1L, ApplicationStatus.HR_INTERVIEW, 0L, hr);
 
         assertEquals(ApplicationStatus.HR_INTERVIEW, details.status());
     }
@@ -496,9 +547,9 @@ class ApplicationServiceTest {
         Application application = detailedApplication(company);
         application.setStatus(ApplicationStatus.HR_INTERVIEW);
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
-        when(applicationRepository.save(application)).thenReturn(application);
+        when(applicationRepository.saveAndFlush(application)).thenReturn(application);
 
-        var details = applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.APPLIED, hr);
+        var details = applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.APPLIED, 0L, hr);
 
         assertEquals(ApplicationStatus.APPLIED, details.status());
         assertTrue(application.getStatusChangedAt() != null);
@@ -518,10 +569,10 @@ class ApplicationServiceTest {
                 1L, InterviewType.HR, InterviewStatus.CANCELED)).thenReturn(true);
 
         assertThrows(IllegalArgumentException.class, () ->
-                applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.APPLIED, hr));
+                applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.APPLIED, 0L, hr));
 
         assertEquals(ApplicationStatus.HR_INTERVIEW, application.getStatus());
-        verify(applicationRepository, never()).save(any());
+        verify(applicationRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -534,10 +585,10 @@ class ApplicationServiceTest {
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
 
         assertThrows(IllegalArgumentException.class, () ->
-                applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.APPLIED, hr));
+                applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.APPLIED, 0L, hr));
 
         verify(interviewRepository, never()).existsByApplicationIdAndTypeAndStatusNot(any(), any(), any());
-        verify(applicationRepository, never()).save(any());
+        verify(applicationRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -557,10 +608,10 @@ class ApplicationServiceTest {
         for (ApplicationStatus[] transition : unsupported) {
             application.setStatus(transition[0]);
             assertThrows(IllegalArgumentException.class, () -> applicationService.transitionHrApplicationStatus(
-                    1L, transition[1], hr));
+                    1L, transition[1], 0L, hr));
         }
 
-        verify(applicationRepository, never()).save(any());
+        verify(applicationRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -571,8 +622,8 @@ class ApplicationServiceTest {
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
 
         assertThrows(IllegalArgumentException.class, () ->
-                applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.OFFER, hr));
-        verify(applicationRepository, never()).save(any());
+                applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.OFFER, 0L, hr));
+        verify(applicationRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -582,15 +633,34 @@ class ApplicationServiceTest {
         Application application = detailedApplication(company);
         application.setStatus(ApplicationStatus.TECH_INTERVIEW_SCHEDULED);
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
-        when(applicationRepository.save(application)).thenReturn(application);
+        when(applicationRepository.saveAndFlush(application)).thenReturn(application);
+        when(interviewRepository.existsByApplicationIdAndTypeAndStatus(
+                1L, InterviewType.TECHNICAL, InterviewStatus.COMPLETED)).thenReturn(true);
 
-        var details = applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.OFFER, hr);
+        var details = applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.OFFER, 0L, hr);
 
         assertEquals(ApplicationStatus.OFFER, details.status());
         verify(notificationEventPublisher).publishAfterCommit(argThat(event ->
                 event.type() == NotificationType.APPLICATION_OFFERED
                         && event.applicationId().equals(1L)
                         && event.interviewId() == null));
+    }
+
+    @Test
+    void scheduledOrCanceledTechnicalInterviewCannotAdvanceToOffer() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User hr = User.builder().id(20L).role(Role.HR).company(company).build();
+        Application application = detailedApplication(company);
+        application.setStatus(ApplicationStatus.TECH_INTERVIEW_SCHEDULED);
+        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
+        when(interviewRepository.existsByApplicationIdAndTypeAndStatus(
+                1L, InterviewType.TECHNICAL, InterviewStatus.COMPLETED)).thenReturn(false);
+
+        assertThrows(IllegalArgumentException.class, () ->
+                applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.OFFER, 0L, hr));
+
+        assertEquals(ApplicationStatus.TECH_INTERVIEW_SCHEDULED, application.getStatus());
+        verify(applicationRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -602,9 +672,9 @@ class ApplicationServiceTest {
         application.setStatusChangedAt(LocalDateTime.now().minusDays(1));
         LocalDateTime previousStatusChange = application.getStatusChangedAt();
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
-        when(applicationRepository.save(application)).thenReturn(application);
+        when(applicationRepository.saveAndFlush(application)).thenReturn(application);
 
-        var details = applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.HIRED, hr);
+        var details = applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.HIRED, 0L, hr);
 
         assertEquals(ApplicationStatus.HIRED, details.status());
         assertTrue(application.getStatusChangedAt().isAfter(previousStatusChange));
@@ -626,15 +696,15 @@ class ApplicationServiceTest {
                 ApplicationStatus.TECH_INTERVIEW_SCHEDULED, ApplicationStatus.REJECTED)) {
             application.setStatus(status);
             assertThrows(IllegalArgumentException.class, () -> applicationService.transitionHrApplicationStatus(
-                    1L, ApplicationStatus.HIRED, hr));
+                    1L, ApplicationStatus.HIRED, 0L, hr));
         }
         application.setStatus(ApplicationStatus.HIRED);
         assertThrows(IllegalArgumentException.class, () -> applicationService.transitionHrApplicationStatus(
-                1L, ApplicationStatus.OFFER, hr));
+                1L, ApplicationStatus.OFFER, 0L, hr));
         assertThrows(IllegalArgumentException.class, () -> applicationService.transitionHrApplicationStatus(
-                1L, ApplicationStatus.REJECTED, hr));
+                1L, ApplicationStatus.REJECTED, 0L, hr));
 
-        verify(applicationRepository, never()).save(any());
+        verify(applicationRepository, never()).saveAndFlush(any());
         verify(notificationEventPublisher, never()).publishAfterCommit(any());
     }
 
@@ -647,20 +717,21 @@ class ApplicationServiceTest {
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
 
         assertThrows(IllegalArgumentException.class, () -> applicationService.transitionHrApplicationStatus(
-                1L, ApplicationStatus.TASK_APPROVED, hr));
-        verify(applicationRepository, never()).save(any());
+                1L, ApplicationStatus.TASK_APPROVED, 0L, hr));
+        verify(applicationRepository, never()).saveAndFlush(any());
     }
 
     @Test
-    void interviewerListsOnlyCompanyScopedSubmittedTasksWithSafeFields() {
+    void interviewerListsOnlyTasksExplicitlyAssignedToThemWithSafeFields() {
         Company company = Company.builder().id(10L).name("Wix").build();
         User interviewer = User.builder().id(30L).role(Role.INTERVIEWER).company(company).build();
         Application application = detailedApplication(company);
         application.setStatus(ApplicationStatus.TASK_SUBMITTED);
         application.setTaskInstructions("Build an API");
         application.setTaskRepoUrl("https://github.com/candidate/task");
-        when(applicationRepository.findByStatusAndJobCompanyOrderByAppliedAtAsc(
-                ApplicationStatus.TASK_SUBMITTED, company)).thenReturn(List.of(application));
+        application.setTaskReviewer(interviewer);
+        when(applicationRepository.findByStatusAndTaskReviewerIdAndJobCompanyOrderByAppliedAtAsc(
+                ApplicationStatus.TASK_SUBMITTED, interviewer.getId(), company)).thenReturn(List.of(application));
 
         var tasks = applicationService.getSubmittedTasksForInterviewer(interviewer);
 
@@ -679,10 +750,10 @@ class ApplicationServiceTest {
         Application application = detailedApplication(company);
         application.setStatus(ApplicationStatus.APPLIED);
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
-        when(applicationRepository.save(application)).thenReturn(application);
+        when(applicationRepository.saveAndFlush(application)).thenReturn(application);
 
         var response = applicationService.rejectHrApplication(
-                1L, "  Thank you for your time. We need deeper API experience.  ", hr);
+                1L, "  Thank you for your time. We need deeper API experience.  ", 0L, hr);
 
         assertEquals(ApplicationStatus.REJECTED, response.status());
         assertEquals("Thank you for your time. We need deeper API experience.", response.candidateFeedback());
@@ -696,21 +767,21 @@ class ApplicationServiceTest {
         User googleHr = User.builder().id(21L).role(Role.HR).company(google).build();
         when(applicationRepository.findByIdAndJobCompany(1L, google)).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () ->
-                applicationService.updateCandidateFeedback(1L, "feedback", googleHr));
+                applicationService.updateCandidateFeedback(1L, "feedback", 0L, googleHr));
 
         Application rejected = detailedApplication(wix);
         rejected.setStatus(ApplicationStatus.REJECTED);
         when(applicationRepository.findByIdAndJobCompany(1L, wix)).thenReturn(Optional.of(rejected));
-        when(applicationRepository.save(rejected)).thenReturn(rejected);
-        var cleared = applicationService.updateCandidateFeedback(1L, "   ", wixHr);
+        when(applicationRepository.saveAndFlush(rejected)).thenReturn(rejected);
+        var cleared = applicationService.updateCandidateFeedback(1L, "   ", 0L, wixHr);
         assertEquals(null, cleared.candidateFeedback());
         assertEquals(ApplicationStatus.REJECTED, rejected.getStatus());
         assertThrows(IllegalArgumentException.class, () ->
-                applicationService.updateCandidateFeedback(1L, "x".repeat(10001), wixHr));
+                applicationService.updateCandidateFeedback(1L, "x".repeat(10001), 0L, wixHr));
 
         rejected.setStatus(ApplicationStatus.APPLIED);
         assertThrows(IllegalArgumentException.class, () ->
-                applicationService.updateCandidateFeedback(1L, "feedback", wixHr));
+                applicationService.updateCandidateFeedback(1L, "feedback", 0L, wixHr));
     }
 
     @Test
@@ -744,19 +815,65 @@ class ApplicationServiceTest {
         User interviewer = User.builder().id(30L).role(Role.INTERVIEWER).company(company).build();
         Application approved = detailedApplication(company);
         approved.setStatus(ApplicationStatus.TASK_SUBMITTED);
-        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(approved));
-        when(applicationRepository.save(approved)).thenReturn(approved);
+        approved.setTaskReviewer(interviewer);
+        when(applicationRepository.findByIdAndJobCompanyAndTaskReviewerId(1L, company, interviewer.getId()))
+                .thenReturn(Optional.of(approved));
+        when(applicationRepository.saveAndFlush(approved)).thenReturn(approved);
 
-        var approval = applicationService.reviewSubmittedTask(1L, TaskReviewDecision.APPROVE, interviewer);
+        var approval = applicationService.reviewSubmittedTask(1L, TaskReviewDecision.APPROVE, 0L, interviewer);
         assertEquals(ApplicationStatus.TASK_APPROVED, approval.status());
 
         Application rejected = detailedApplication(company);
         rejected.setId(2L);
         rejected.setStatus(ApplicationStatus.TASK_SUBMITTED);
-        when(applicationRepository.findByIdAndJobCompany(2L, company)).thenReturn(Optional.of(rejected));
-        when(applicationRepository.save(rejected)).thenReturn(rejected);
-        var rejection = applicationService.reviewSubmittedTask(2L, TaskReviewDecision.REJECT, interviewer);
+        rejected.setTaskReviewer(interviewer);
+        when(applicationRepository.findByIdAndJobCompanyAndTaskReviewerId(2L, company, interviewer.getId()))
+                .thenReturn(Optional.of(rejected));
+        when(applicationRepository.saveAndFlush(rejected)).thenReturn(rejected);
+        var rejection = applicationService.reviewSubmittedTask(2L, TaskReviewDecision.REJECT, 0L, interviewer);
         assertEquals(ApplicationStatus.REJECTED, rejection.status());
+    }
+
+    @Test
+    void unassignedAndCrossCompanyInterviewersCannotReviewSubmittedTask() {
+        Company wix = Company.builder().id(10L).name("Wix").build();
+        Company google = Company.builder().id(20L).name("Google").build();
+        User assigned = User.builder().id(30L).role(Role.INTERVIEWER).company(wix).build();
+        User sameCompanyOther = User.builder().id(31L).role(Role.INTERVIEWER).company(wix).build();
+        User otherCompany = User.builder().id(32L).role(Role.INTERVIEWER).company(google).build();
+        Application application = detailedApplication(wix);
+        application.setStatus(ApplicationStatus.TASK_SUBMITTED);
+        application.setTaskReviewer(assigned);
+
+        when(applicationRepository.findByIdAndJobCompanyAndTaskReviewerId(1L, wix, 31L))
+                .thenReturn(Optional.empty());
+        when(applicationRepository.findByIdAndJobCompanyAndTaskReviewerId(1L, google, 32L))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> applicationService.reviewSubmittedTask(
+                1L, TaskReviewDecision.APPROVE, 0L, sameCompanyOther));
+        assertThrows(ResourceNotFoundException.class, () -> applicationService.reviewSubmittedTask(
+                1L, TaskReviewDecision.REJECT, 0L, otherCompany));
+        verify(applicationRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void approvingLegacyTaskWithActiveTechnicalInterviewPreservesInterviewStage() {
+        Company company = Company.builder().id(10L).name("Wix").build();
+        User interviewer = User.builder().id(30L).role(Role.INTERVIEWER).company(company).build();
+        Application application = detailedApplication(company);
+        application.setStatus(ApplicationStatus.TASK_SUBMITTED);
+        application.setTaskReviewer(interviewer);
+        when(applicationRepository.findByIdAndJobCompanyAndTaskReviewerId(1L, company, 30L))
+                .thenReturn(Optional.of(application));
+        when(interviewRepository.existsByApplicationIdAndTypeAndStatus(
+                1L, InterviewType.TECHNICAL, InterviewStatus.SCHEDULED)).thenReturn(true);
+        when(applicationRepository.saveAndFlush(application)).thenReturn(application);
+
+        var result = applicationService.reviewSubmittedTask(
+                1L, TaskReviewDecision.APPROVE, 0L, interviewer);
+
+        assertEquals(ApplicationStatus.TECH_INTERVIEW_SCHEDULED, result.status());
     }
 
     @Test
@@ -765,15 +882,17 @@ class ApplicationServiceTest {
         User interviewer = User.builder().id(30L).role(Role.INTERVIEWER).company(company).build();
         Application application = detailedApplication(company);
         application.setStatus(ApplicationStatus.TASK_SUBMITTED);
-        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
-        when(applicationRepository.save(application)).thenReturn(application);
+        application.setTaskReviewer(interviewer);
+        when(applicationRepository.findByIdAndJobCompanyAndTaskReviewerId(1L, company, interviewer.getId()))
+                .thenReturn(Optional.of(application));
+        when(applicationRepository.saveAndFlush(application)).thenReturn(application);
 
         var response = applicationService.updateTaskReviewNotes(
-                1L, "  Check error handling and test coverage.  ", interviewer);
+                1L, "  Check error handling and test coverage.  ", 0L, interviewer);
 
         assertEquals("Check error handling and test coverage.", response.taskReviewNotes());
         assertEquals(ApplicationStatus.TASK_SUBMITTED, application.getStatus());
-        verify(applicationRepository).save(application);
+        verify(applicationRepository).saveAndFlush(application);
     }
 
     @Test
@@ -781,20 +900,23 @@ class ApplicationServiceTest {
         Company wix = Company.builder().id(10L).name("Wix").build();
         Company google = Company.builder().id(20L).name("Google").build();
         User googleInterviewer = User.builder().id(31L).role(Role.INTERVIEWER).company(google).build();
-        when(applicationRepository.findByIdAndJobCompany(1L, google)).thenReturn(Optional.empty());
+        when(applicationRepository.findByIdAndJobCompanyAndTaskReviewerId(1L, google, 31L))
+                .thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () ->
-                applicationService.updateTaskReviewNotes(1L, "notes", googleInterviewer));
+                applicationService.updateTaskReviewNotes(1L, "notes", 0L, googleInterviewer));
         assertThrows(AccessDeniedException.class, () ->
-                applicationService.updateTaskReviewNotes(1L, "notes",
+                applicationService.updateTaskReviewNotes(1L, "notes", 0L,
                         User.builder().role(Role.CANDIDATE).build()));
 
         User wixInterviewer = User.builder().id(30L).role(Role.INTERVIEWER).company(wix).build();
         Application application = detailedApplication(wix);
         application.setStatus(ApplicationStatus.TASK_SUBMITTED);
-        when(applicationRepository.findByIdAndJobCompany(1L, wix)).thenReturn(Optional.of(application));
+        application.setTaskReviewer(wixInterviewer);
+        when(applicationRepository.findByIdAndJobCompanyAndTaskReviewerId(1L, wix, 30L))
+                .thenReturn(Optional.of(application));
         assertThrows(IllegalArgumentException.class, () ->
-                applicationService.updateTaskReviewNotes(1L, "x".repeat(10001), wixInterviewer));
+                applicationService.updateTaskReviewNotes(1L, "x".repeat(10001), 0L, wixInterviewer));
     }
 
     @Test
@@ -809,13 +931,16 @@ class ApplicationServiceTest {
         User interviewer = User.builder().id(30L).role(Role.INTERVIEWER).company(company).build();
         Application reviewed = detailedApplication(company);
         reviewed.setStatus(ApplicationStatus.TASK_APPROVED);
-        when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(reviewed));
+        reviewed.setTaskReviewer(interviewer);
+        when(applicationRepository.findByIdAndJobCompanyAndTaskReviewerId(1L, company, 30L))
+                .thenReturn(Optional.of(reviewed));
         assertThrows(IllegalArgumentException.class, () -> applicationService.reviewSubmittedTask(
-                1L, TaskReviewDecision.REJECT, interviewer));
+                1L, TaskReviewDecision.REJECT, 0L, interviewer));
 
-        when(applicationRepository.findByIdAndJobCompany(99L, company)).thenReturn(Optional.empty());
+        when(applicationRepository.findByIdAndJobCompanyAndTaskReviewerId(99L, company, 30L))
+                .thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () -> applicationService.reviewSubmittedTask(
-                99L, TaskReviewDecision.APPROVE, interviewer));
+                99L, TaskReviewDecision.APPROVE, 0L, interviewer));
     }
 
     @Test
@@ -824,8 +949,8 @@ class ApplicationServiceTest {
         assertThrows(AccessDeniedException.class, () ->
                 applicationService.getSubmittedTasksForInterviewer(interviewer));
         assertThrows(AccessDeniedException.class, () -> applicationService.reviewSubmittedTask(
-                1L, TaskReviewDecision.APPROVE, interviewer));
-        verify(applicationRepository, never()).findByIdAndJobCompany(any(), any());
+                1L, TaskReviewDecision.APPROVE, 0L, interviewer));
+        verify(applicationRepository, never()).findByIdAndJobCompanyAndTaskReviewerId(any(), any(), any());
     }
 
     @Test
@@ -835,8 +960,8 @@ class ApplicationServiceTest {
         when(applicationRepository.findByIdAndJobCompany(99L, company)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () ->
-                applicationService.transitionHrApplicationStatus(99L, ApplicationStatus.HIRED, hr));
-        verify(applicationRepository, never()).save(any());
+                applicationService.transitionHrApplicationStatus(99L, ApplicationStatus.HIRED, 0L, hr));
+        verify(applicationRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -844,9 +969,9 @@ class ApplicationServiceTest {
         User hr = User.builder().id(20L).role(Role.HR).build();
 
         assertThrows(AccessDeniedException.class, () ->
-                applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.REJECTED, hr));
+                applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.REJECTED, 0L, hr));
         assertThrows(AccessDeniedException.class, () ->
-                applicationService.assignHomeTask(1L, "Build an API", LocalDateTime.now().plusDays(2), hr));
+                applicationService.assignHomeTask(1L, "Build an API", LocalDateTime.now().plusDays(2), 30L, 0L, hr));
         verify(applicationRepository, never()).findByIdAndJobCompany(any(), any());
     }
 
@@ -855,7 +980,7 @@ class ApplicationServiceTest {
         User candidate = User.builder().id(20L).role(Role.CANDIDATE).build();
 
         assertThrows(AccessDeniedException.class, () ->
-                applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.HR_INTERVIEW, candidate));
+                applicationService.transitionHrApplicationStatus(1L, ApplicationStatus.HR_INTERVIEW, 0L, candidate));
 
         verify(applicationRepository, never()).findByIdAndJobCompany(any(), any());
     }
@@ -869,14 +994,17 @@ class ApplicationServiceTest {
         application.setTaskRepoUrl("https://github.com/old/submission");
         LocalDateTime deadline = LocalDateTime.now().plusDays(5);
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
-        when(applicationRepository.save(application)).thenReturn(application);
+        User reviewer = User.builder().id(30L).role(Role.INTERVIEWER).company(company).build();
+        when(userRepository.findByIdAndCompany(30L, company)).thenReturn(Optional.of(reviewer));
+        when(applicationRepository.saveAndFlush(application)).thenReturn(application);
 
-        var details = applicationService.assignHomeTask(1L, "  Build a REST API  ", deadline, hr);
+        var details = applicationService.assignHomeTask(1L, "  Build a REST API  ", deadline, 30L, 0L, hr);
 
         assertEquals(ApplicationStatus.TASK_SENT, details.status());
         assertEquals(deadline, details.taskDeadline());
         assertEquals("Build a REST API", details.taskInstructions());
         assertEquals(null, details.taskRepoUrl());
+        assertEquals(30L, details.taskReviewerId());
     }
 
     @Test
@@ -888,12 +1016,12 @@ class ApplicationServiceTest {
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
 
         assertThrows(IllegalArgumentException.class, () ->
-                applicationService.assignHomeTask(1L, "Build an API", LocalDateTime.now().minusMinutes(1), hr));
+                applicationService.assignHomeTask(1L, "Build an API", LocalDateTime.now().minusMinutes(1), 30L, 0L, hr));
 
         application.setStatus(ApplicationStatus.TASK_SENT);
         assertThrows(IllegalArgumentException.class, () ->
-                applicationService.assignHomeTask(1L, "Build an API", LocalDateTime.now().plusDays(2), hr));
-        verify(applicationRepository, never()).save(any());
+                applicationService.assignHomeTask(1L, "Build an API", LocalDateTime.now().plusDays(2), 30L, 0L, hr));
+        verify(applicationRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -906,9 +1034,9 @@ class ApplicationServiceTest {
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
 
         assertThrows(IllegalArgumentException.class, () ->
-                applicationService.assignHomeTask(1L, "Build an API", LocalDateTime.now().plusDays(2), hr));
+                applicationService.assignHomeTask(1L, "Build an API", LocalDateTime.now().plusDays(2), 30L, 0L, hr));
         assertEquals("https://github.com/candidate/submission", application.getTaskRepoUrl());
-        verify(applicationRepository, never()).save(any());
+        verify(applicationRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -920,8 +1048,8 @@ class ApplicationServiceTest {
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
 
         assertThrows(IllegalArgumentException.class, () -> applicationService.assignHomeTask(
-                1L, "   ", LocalDateTime.now().plusDays(2), hr));
-        verify(applicationRepository, never()).save(any());
+                1L, "   ", LocalDateTime.now().plusDays(2), 30L, 0L, hr));
+        verify(applicationRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -937,10 +1065,10 @@ class ApplicationServiceTest {
         application.setTaskReviewNotes("PRIVATE_REVIEW");
         LocalDateTime updatedDeadline = LocalDateTime.now().plusDays(4);
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
-        when(applicationRepository.save(application)).thenReturn(application);
+        when(applicationRepository.saveAndFlush(application)).thenReturn(application);
 
         HrApplicationDetailsDTO details = applicationService.updateHomeTaskDeadline(
-                1L, updatedDeadline, hr);
+                1L, updatedDeadline, 0L, hr);
 
         assertEquals(updatedDeadline, details.taskDeadline());
         assertEquals(ApplicationStatus.TASK_SENT, application.getStatus());
@@ -964,18 +1092,18 @@ class ApplicationServiceTest {
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.of(application));
 
         assertThrows(IllegalArgumentException.class,
-                () -> applicationService.updateHomeTaskDeadline(1L, null, hr));
+                () -> applicationService.updateHomeTaskDeadline(1L, null, 0L, hr));
         assertThrows(IllegalArgumentException.class,
-                () -> applicationService.updateHomeTaskDeadline(1L, LocalDateTime.now().minusMinutes(1), hr));
+                () -> applicationService.updateHomeTaskDeadline(1L, LocalDateTime.now().minusMinutes(1), 0L, hr));
         assertThrows(IllegalArgumentException.class,
-                () -> applicationService.updateHomeTaskDeadline(1L, LocalDateTime.now(), hr));
+                () -> applicationService.updateHomeTaskDeadline(1L, LocalDateTime.now(), 0L, hr));
         for (ApplicationStatus status : List.of(ApplicationStatus.TASK_SUBMITTED,
                 ApplicationStatus.TASK_APPROVED, ApplicationStatus.TECH_INTERVIEW_SCHEDULED)) {
             application.setStatus(status);
             assertThrows(IllegalArgumentException.class, () -> applicationService.updateHomeTaskDeadline(
-                    1L, LocalDateTime.now().plusDays(2), hr));
+                    1L, LocalDateTime.now().plusDays(2), 0L, hr));
         }
-        verify(applicationRepository, never()).save(any());
+        verify(applicationRepository, never()).saveAndFlush(any());
         verify(notificationEventPublisher, never()).publishAfterCommit(any());
     }
 
@@ -985,17 +1113,17 @@ class ApplicationServiceTest {
         User hr = User.builder().id(20L).role(Role.HR).company(company).build();
         when(applicationRepository.findByIdAndJobCompany(1L, company)).thenReturn(Optional.empty());
         assertThrows(ResourceNotFoundException.class, () -> applicationService.updateHomeTaskDeadline(
-                1L, LocalDateTime.now().plusDays(2), hr));
+                1L, LocalDateTime.now().plusDays(2), 0L, hr));
         assertThrows(AccessDeniedException.class, () -> applicationService.updateHomeTaskDeadline(
-                1L, LocalDateTime.now().plusDays(2), User.builder().role(Role.CANDIDATE).build()));
-        verify(applicationRepository, never()).save(any());
+                1L, LocalDateTime.now().plusDays(2), 0L, User.builder().role(Role.CANDIDATE).build()));
+        verify(applicationRepository, never()).saveAndFlush(any());
     }
 
     private Application assignedApplication(LocalDateTime deadline) {
         Company company = Company.builder().name("Example Company").build();
         Job job = Job.builder().id(2L).title("Developer").company(company).location("Remote").build();
         User candidate = candidate(3L);
-        return Application.builder()
+        return Application.builder().version(0L)
                 .id(1L)
                 .candidate(candidate)
                 .job(job)
@@ -1009,7 +1137,7 @@ class ApplicationServiceTest {
         User candidate = User.builder().id(3L).firstName("Dana").lastName("Cohen")
                 .email("dana@example.com").role(Role.CANDIDATE).build();
         Job job = Job.builder().id(2L).title("Backend Engineer").location("Remote").company(company).build();
-        return Application.builder().id(1L).candidate(candidate).job(job).status(ApplicationStatus.APPLIED)
+        return Application.builder().version(0L).id(1L).candidate(candidate).job(job).status(ApplicationStatus.APPLIED)
                 .coverLetter("Cover").hrNotes("Notes").cvUrl("internal-key.pdf")
                 .appliedAt(LocalDateTime.of(2026, 8, 20, 10, 30)).build();
     }
