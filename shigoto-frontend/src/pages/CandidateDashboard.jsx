@@ -53,8 +53,16 @@ function EmptyState({ title, description }) {
 /**
  * Renders the application card interface and coordinates its user interactions.
  */
-function ApplicationCard({ application, actionRequired = false }) {
+function ApplicationCard({ application, actionRequired = false, deadlineReferenceTime = null }) {
   const status = getApplicationStatusDisplay(application.status);
+  const taskDeadline = application.taskDeadline ? new Date(application.taskDeadline) : null;
+  const statusLabel = application.status === 'TASK_SENT'
+    && deadlineReferenceTime !== null
+    && taskDeadline
+    && !Number.isNaN(taskDeadline.getTime())
+    && taskDeadline.getTime() <= deadlineReferenceTime
+    ? 'Deadline passed'
+    : status.label;
   return (
     <Card sx={actionRequired ? { borderLeft: 4, borderLeftColor: 'warning.main' } : undefined}>
       <CardActionArea component={Link} to={`/candidate/applications/${application.id}`}>
@@ -80,7 +88,7 @@ function ApplicationCard({ application, actionRequired = false }) {
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.25 }}>Applied {formatDate(application.appliedAt)}</Typography>
               )}
             </Box>
-            <Chip label={status.label} color={status.color} variant={status.color === 'default' ? 'outlined' : 'filled'} />
+            <Chip label={statusLabel} color={status.color} variant={status.color === 'default' ? 'outlined' : 'filled'} />
           </Stack>
           <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 2.5, color: 'primary.main' }}>
             <Typography variant="button">{actionRequired ? 'Open task' : 'View application'}</Typography>
@@ -132,6 +140,7 @@ function InterviewCard({ interview, upcoming = false }) {
  */
 export default function CandidateDashboard() {
   const [applications, setApplications] = useState([]);
+  const [applicationsLoadedAt, setApplicationsLoadedAt] = useState(null);
   const [interviews, setInterviews] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [dashboardMode, setDashboardMode] = useState('active');
@@ -148,6 +157,7 @@ export default function CandidateDashboard() {
     try {
       const [applicationsResponse, interviewsResponse, notificationsResponse] = await fetchCandidateDashboard();
       setApplications(Array.isArray(applicationsResponse.data) ? applicationsResponse.data : []);
+      setApplicationsLoadedAt(Date.now());
       setInterviews(Array.isArray(interviewsResponse.data) ? interviewsResponse.data : []);
       const loadedNotifications = Array.isArray(notificationsResponse.data) ? notificationsResponse.data : [];
       setNotifications(loadedNotifications);
@@ -167,6 +177,7 @@ export default function CandidateDashboard() {
       .then(([applicationsResponse, interviewsResponse, notificationsResponse]) => {
         if (!active) return;
         setApplications(Array.isArray(applicationsResponse.data) ? applicationsResponse.data : []);
+        setApplicationsLoadedAt(Date.now());
         setInterviews(Array.isArray(interviewsResponse.data) ? interviewsResponse.data : []);
         const loadedNotifications = Array.isArray(notificationsResponse.data) ? notificationsResponse.data : [];
         setNotifications(loadedNotifications);
@@ -183,7 +194,12 @@ export default function CandidateDashboard() {
   }, []);
 
   const activeApplications = useMemo(() => applications.filter((item) => activeStatuses.has(item.status)), [applications]);
-  const pendingTasks = useMemo(() => applications.filter((item) => item.status === 'TASK_SENT'), [applications]);
+  // Pending tasks are actionable only while their valid deadline is still in the future.
+  const pendingTasks = useMemo(() => applications.filter((item) => {
+    if (item.status !== 'TASK_SENT' || !item.taskDeadline || applicationsLoadedAt === null) return false;
+    const deadline = new Date(item.taskDeadline);
+    return !Number.isNaN(deadline.getTime()) && deadline.getTime() > applicationsLoadedAt;
+  }), [applications, applicationsLoadedAt]);
   const pastApplications = useMemo(() => applications.filter((item) => pastStatuses.has(item.status)), [applications]);
   const upcomingInterviews = useMemo(() => interviews.filter((item) => item.status === 'SCHEDULED'), [interviews]);
   const interviewHistory = useMemo(() => interviews.filter((item) => ['COMPLETED', 'CANCELED'].includes(item.status)), [interviews]);
@@ -243,7 +259,7 @@ export default function CandidateDashboard() {
           {!loading && !loadError && dashboardMode === 'active' && selectedView === 'active' && (
             <Stack spacing={2}>
               <Typography variant="h5">Active applications</Typography>
-              {activeApplications.length ? activeApplications.map((item) => <ApplicationCard key={item.id} application={item} />)
+              {activeApplications.length ? activeApplications.map((item) => <ApplicationCard key={item.id} application={item} deadlineReferenceTime={applicationsLoadedAt} />)
                 : <EmptyState title="No active applications" description="Your active applications will appear here." />}
             </Stack>
           )}

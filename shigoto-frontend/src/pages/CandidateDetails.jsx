@@ -525,7 +525,7 @@ export default function CandidateDetails() {
   };
 
   return (
-    <PageSkeleton title="Candidate Record" description="Review this candidate in the context of one company job application.">
+    <PageSkeleton title="Candidate Details" description="Review this candidate in the context of one company job application.">
       {loading && <Box sx={{ minHeight: 320, display: 'grid', placeItems: 'center' }}><CircularProgress size={34} /></Box>}
       {!loading && error && <Alert severity="error" action={<Button color="inherit" size="small" onClick={loadRecord}>Retry</Button>}>{error}</Alert>}
       {!loading && !error && record && (

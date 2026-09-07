@@ -190,11 +190,6 @@ export default function JobManagement() {
                   </Stack>
                   <Typography variant="h6" component="h2" sx={{ mt: 2 }}>{job.title}</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>{job.location}</Typography>
-                  <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider' }}>
-                    <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'pre-wrap' }}>
-                      {job.description}
-                    </Typography>
-                  </Box>
                 </CardContent>
               </Card>
             </Grid>
