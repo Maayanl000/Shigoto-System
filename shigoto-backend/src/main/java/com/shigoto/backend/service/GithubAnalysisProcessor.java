@@ -17,6 +17,10 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Objects;
 
+/**
+ * Processes asynchronous GitHub analysis requests and maintains the candidate's analysis state.
+ * Required collaborators are supplied through Lombok-generated constructor injection.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -26,8 +30,13 @@ public class GithubAnalysisProcessor {
     private final GithubDataRepository githubDataRepository;
     private final GithubService githubService;
 
+    /**
+     * Processes a GitHub analysis request and persists either the collected metrics or a failure state.
+     * @param event the domain event to process
+     */
     @Transactional
     public void process(GithubAnalysisRequestedEvent event) {
+        // Reject malformed, duplicate, or stale events before calling the external API.
         if (event == null || event.eventId() == null || event.candidateUserId() == null
                 || event.applicationId() == null || event.githubUsername() == null
                 || event.githubUsername().isBlank()) {
@@ -52,6 +61,7 @@ public class GithubAnalysisProcessor {
             return;
         }
 
+        // Reuse the candidate's analysis row so status and event identity update atomically.
         GithubData data = githubDataRepository.findByCandidateId(candidate.getId()).orElse(null);
         if (data != null && data.getUsername().equalsIgnoreCase(currentUsername)
                 && (data.getStatus() == GithubAnalysisStatus.READY
@@ -71,6 +81,7 @@ public class GithubAnalysisProcessor {
             clearAnalysis(data);
         }
 
+        // Store either the completed analysis or a cleared failure state for the same event.
         try {
             GithubService.GithubAnalysisResult result = githubService.analyze(currentUsername);
             data.setStatus(GithubAnalysisStatus.READY);
@@ -92,6 +103,10 @@ public class GithubAnalysisProcessor {
         githubDataRepository.save(data);
     }
 
+    /**
+     * Removes stored GitHub analysis and detaches it from the candidate after a failed or obsolete analysis.
+     * @param data the data
+     */
     private void clearAnalysis(GithubData data) {
         data.setPublicRepositoryCount(null);
         data.setTopLanguages(new ArrayList<>());

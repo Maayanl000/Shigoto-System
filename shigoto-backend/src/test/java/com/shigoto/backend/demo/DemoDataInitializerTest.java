@@ -3,6 +3,7 @@ package com.shigoto.backend.demo;
 import com.shigoto.backend.entity.Application;
 import com.shigoto.backend.entity.ApplicationStatus;
 import com.shigoto.backend.entity.Company;
+import com.shigoto.backend.entity.EmploymentType;
 import com.shigoto.backend.entity.Interview;
 import com.shigoto.backend.entity.InterviewStatus;
 import com.shigoto.backend.entity.InterviewType;
@@ -24,6 +25,7 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -102,7 +104,16 @@ class DemoDataInitializerTest {
         assertEquals(13, users.size());
         assertEquals(8, jobs.size());
         assertEquals(8, applications.size());
-        assertEquals(2, interviews.size());
+        assertEquals(3, interviews.size());
+
+        assertEquals(Set.of("NVIDIA", "Microsoft", "Google"), companies.keySet());
+        assertEquals(Set.of(
+                "rachel.green@nvidia.demo", "gunther@nvidia.demo", "mike.hannigan@nvidia.demo",
+                "janice.litman@microsoft.demo", "chandler.bing@microsoft.demo",
+                "joey.tribbiani@microsoft.demo", "ross.geller@google.demo", "phoebe.buffay@google.demo",
+                "eren.yeager@candidate.demo", "mikasa.ackerman@candidate.demo",
+                "armin.arlert@candidate.demo", "levi.ackerman@candidate.demo", "hange.zoe@candidate.demo"
+        ), users.keySet());
 
         assertEquals(Role.HR, users.get("rachel.green@nvidia.demo").getRole());
         assertEquals("NVIDIA", users.get("rachel.green@nvidia.demo").getCompany().getName());
@@ -130,6 +141,17 @@ class DemoDataInitializerTest {
         assertEquals(1, countUsers(Role.HR, "Google"));
         assertEquals(1, countUsers(Role.INTERVIEWER, "Google"));
         assertEquals(5, users.values().stream().filter(user -> user.getRole() == Role.CANDIDATE).count());
+        assertCandidateProfile("eren.yeager@candidate.demo", "Computer Science Student", "Backend Developer",
+                EmploymentType.STUDENT, true, "https://github.com/vladmihalcea");
+        assertCandidateProfile("mikasa.ackerman@candidate.demo", "Full Stack Developer", "Software Engineer",
+                EmploymentType.FULL_TIME, false, "https://github.com/gaearon");
+        assertCandidateProfile("armin.arlert@candidate.demo", "Frontend Developer", "Frontend Engineer",
+                EmploymentType.INTERNSHIP, true, "https://github.com/sindresorhus");
+        assertCandidateProfile("levi.ackerman@candidate.demo", "Systems Programmer", "C++ Developer",
+                EmploymentType.FULL_TIME, false, "https://github.com/torvalds");
+        assertCandidateProfile("hange.zoe@candidate.demo", "Software Engineering Student",
+                "Backend Engineering Intern", EmploymentType.INTERNSHIP, true,
+                "https://github.com/gvanrossum");
         assertEquals("Yokneam", jobs.get("NVIDIA|Student Software Developer").getLocation());
         assertEquals("Herzliya", jobs.get("Microsoft|Java Backend Student").getLocation());
         assertEquals("Tel Aviv", jobs.get("Google|Software Engineering Student").getLocation());
@@ -150,6 +172,13 @@ class DemoDataInitializerTest {
         assertTrue(applications.values().stream()
                 .map(Application::getStatus)
                 .anyMatch(ApplicationStatus.REJECTED::equals));
+        assertEquals(2, countApplications(ApplicationStatus.APPLIED));
+        assertEquals(1, countApplications(ApplicationStatus.HR_INTERVIEW));
+        assertEquals(1, countApplications(ApplicationStatus.TASK_SENT));
+        assertEquals(1, countApplications(ApplicationStatus.TASK_SUBMITTED));
+        assertEquals(1, countApplications(ApplicationStatus.TECH_INTERVIEW_SCHEDULED));
+        assertEquals(1, countApplications(ApplicationStatus.OFFER));
+        assertEquals(1, countApplications(ApplicationStatus.REJECTED));
         assertTrue(applications.values().stream()
                 .allMatch(application -> application.getStatusChangedAt() != null));
         assertTrue(applications.values().stream()
@@ -158,6 +187,27 @@ class DemoDataInitializerTest {
         assertTrue(applications.values().stream()
                 .filter(application -> application.getStatus() != ApplicationStatus.APPLIED)
                 .allMatch(application -> application.getStatusChangedAt().isAfter(application.getAppliedAt())));
+        assertCandidateApplicationsUseCv("eren.yeager@candidate.demo", DemoDataInitializer.EREN_CV_STORAGE_KEY);
+        assertCandidateApplicationsUseCv("mikasa.ackerman@candidate.demo", DemoDataInitializer.MIKASA_CV_STORAGE_KEY);
+        assertCandidateApplicationsUseCv("armin.arlert@candidate.demo", DemoDataInitializer.ARMIN_CV_STORAGE_KEY);
+        assertNull(application("hange.zoe@candidate.demo", "NVIDIA", "Backend Developer").getCvUrl());
+        assertNull(application("levi.ackerman@candidate.demo", "Google", "Frontend Developer").getCvUrl());
+        assertEquals(3, applications.values().stream()
+                .filter(application -> application.getCoverLetter() != null
+                        && !application.getCoverLetter().isBlank())
+                .count());
+        assertTrue(application("eren.yeager@candidate.demo", "NVIDIA", "Backend Developer")
+                .getCoverLetter().contains("Java development, API design, and database work"));
+        assertTrue(application("mikasa.ackerman@candidate.demo", "NVIDIA", "Full Stack Developer")
+                .getCoverLetter().contains("React, JavaScript, C++"));
+        assertTrue(application("armin.arlert@candidate.demo", "Google", "Frontend Developer")
+                .getCoverLetter().contains("responsive UI development"));
+        assertNull(application("levi.ackerman@candidate.demo", "Google", "Frontend Developer")
+                .getCoverLetter());
+        assertEquals("https://github.com/spring-guides/gs-rest-service",
+                application("eren.yeager@candidate.demo", "Microsoft", "Software Engineer").getTaskRepoUrl());
+        assertEquals("https://github.com/facebook/folly",
+                application("mikasa.ackerman@candidate.demo", "Microsoft", "C++ Developer").getTaskRepoUrl());
         assertEquals(originalApplicationTimestamps, applicationTimestamps());
         assertEquals(originalInterviewTimes, interviewTimes());
 
@@ -180,7 +230,13 @@ class DemoDataInitializerTest {
         verify(passwordEncoder, times(13)).encode(DemoDataInitializer.DEMO_PASSWORD);
         verify(jobRepository, times(8)).save(any(Job.class));
         verify(applicationRepository, times(8)).save(any(Application.class));
-        verify(interviewRepository, times(2)).save(any(Interview.class));
+        Interview offerTechnical = interview(
+                "armin.arlert@candidate.demo", "Google", "Frontend Developer", InterviewType.TECHNICAL);
+        assertEquals(InterviewStatus.COMPLETED, offerTechnical.getStatus());
+        assertEquals("phoebe.buffay@google.demo", offerTechnical.getInterviewer().getEmail());
+        assertTrue(offerTechnical.getFeedback().contains("accessibility awareness"));
+
+        verify(interviewRepository, times(3)).save(any(Interview.class));
     }
 
     @Test
@@ -216,6 +272,76 @@ class DemoDataInitializerTest {
         assertEquals(2, countUsers(Role.INTERVIEWER, "NVIDIA"));
     }
 
+    @Test
+    void fillsMissingDemoCvWithoutOverwritingExistingCustomCv() throws Exception {
+        initializer.run();
+        Application missingCv = application(
+                "eren.yeager@candidate.demo", "NVIDIA", "Backend Developer");
+        Application customCv = application(
+                "mikasa.ackerman@candidate.demo", "Microsoft", "C++ Developer");
+        missingCv.setCvUrl(null);
+        customCv.setCvUrl("123e4567-e89b-12d3-a456-426614174000.pdf");
+
+        initializer.run();
+
+        assertEquals(DemoDataInitializer.EREN_CV_STORAGE_KEY, missingCv.getCvUrl());
+        assertEquals("123e4567-e89b-12d3-a456-426614174000.pdf", customCv.getCvUrl());
+        verify(applicationRepository, times(9)).save(any(Application.class));
+    }
+
+    @Test
+    void repairsLegacySparseCandidateProfilesWithoutOverwritingCustomValues() throws Exception {
+        initializer.run();
+        User eren = users.get("eren.yeager@candidate.demo");
+        eren.setGithubProfileUrl("https://github.com/shigoto-demo-eren");
+        eren.setCurrentTitle(null);
+        eren.setDesiredRole(null);
+        eren.setEmploymentType(null);
+        eren.setStudent(false);
+        User mikasa = users.get("mikasa.ackerman@candidate.demo");
+        mikasa.setGithubProfileUrl("https://github.com/custom-profile");
+        mikasa.setCurrentTitle("Custom title");
+        mikasa.setDesiredRole(null);
+        mikasa.setEmploymentType(null);
+
+        initializer.run();
+
+        assertCandidateProfile("eren.yeager@candidate.demo", "Computer Science Student", "Backend Developer",
+                EmploymentType.STUDENT, true, "https://github.com/vladmihalcea");
+        assertEquals("https://github.com/custom-profile", mikasa.getGithubProfileUrl());
+        assertEquals("Custom title", mikasa.getCurrentTitle());
+        assertEquals("Software Engineer", mikasa.getDesiredRole());
+        assertEquals(EmploymentType.FULL_TIME, mikasa.getEmploymentType());
+    }
+
+    @Test
+    void fillsMissingIntendedCoverLetterWithoutOverwritingCustomLetter() throws Exception {
+        initializer.run();
+        Application eren = application("eren.yeager@candidate.demo", "NVIDIA", "Backend Developer");
+        Application mikasa = application("mikasa.ackerman@candidate.demo", "NVIDIA", "Full Stack Developer");
+        eren.setCoverLetter(null);
+        mikasa.setCoverLetter("Custom candidate-authored letter");
+
+        initializer.run();
+
+        assertTrue(eren.getCoverLetter().contains("clean architecture, validation, and maintainability"));
+        assertEquals("Custom candidate-authored letter", mikasa.getCoverLetter());
+    }
+
+    @Test
+    void repairsLegacyTaskRepositoryWithoutOverwritingCustomRepository() throws Exception {
+        initializer.run();
+        Application eren = application("eren.yeager@candidate.demo", "Microsoft", "Software Engineer");
+        Application mikasa = application("mikasa.ackerman@candidate.demo", "Microsoft", "C++ Developer");
+        eren.setTaskRepoUrl("https://github.com/shigoto-demo/eren-service-health");
+        mikasa.setTaskRepoUrl("https://github.com/custom/example");
+
+        initializer.run();
+
+        assertEquals("https://github.com/spring-guides/gs-rest-service", eren.getTaskRepoUrl());
+        assertEquals("https://github.com/custom/example", mikasa.getTaskRepoUrl());
+    }
+
     private Map<String, ApplicationTimestamps> applicationTimestamps() {
         Map<String, ApplicationTimestamps> timestamps = new LinkedHashMap<>();
         applications.forEach((key, application) -> timestamps.put(key,
@@ -235,6 +361,48 @@ class DemoDataInitializerTest {
                 .filter(user -> user.getCompany() != null)
                 .filter(user -> companyName.equals(user.getCompany().getName()))
                 .count();
+    }
+
+    private long countApplications(ApplicationStatus status) {
+        return applications.values().stream()
+                .filter(application -> application.getStatus() == status)
+                .count();
+    }
+
+    private void assertCandidateProfile(
+            String email,
+            String currentTitle,
+            String desiredRole,
+            EmploymentType employmentType,
+            boolean student,
+            String githubProfileUrl) {
+        User candidate = users.get(email);
+        assertEquals(currentTitle, candidate.getCurrentTitle());
+        assertEquals(desiredRole, candidate.getDesiredRole());
+        assertEquals(employmentType, candidate.getEmploymentType());
+        assertEquals(student, candidate.isStudent());
+        assertEquals(githubProfileUrl, candidate.getGithubProfileUrl());
+    }
+
+    private void assertCandidateApplicationsUseCv(String candidateEmail, String expectedCvStorageKey) {
+        assertTrue(applications.values().stream()
+                .filter(application -> candidateEmail.equals(application.getCandidate().getEmail()))
+                .allMatch(application -> expectedCvStorageKey.equals(application.getCvUrl())));
+    }
+
+    private Application application(String candidateEmail, String companyName, String jobTitle) {
+        return applications.values().stream()
+                .filter(candidateApplication -> candidateEmail.equals(candidateApplication.getCandidate().getEmail()))
+                .filter(candidateApplication -> companyName.equals(candidateApplication.getJob().getCompany().getName()))
+                .filter(candidateApplication -> jobTitle.equals(candidateApplication.getJob().getTitle()))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private Interview interview(
+            String candidateEmail, String companyName, String jobTitle, InterviewType type) {
+        Long applicationId = application(candidateEmail, companyName, jobTitle).getId();
+        return interviews.get(interviewKey(applicationId, type));
     }
 
     private void configureCompanyRepository() {

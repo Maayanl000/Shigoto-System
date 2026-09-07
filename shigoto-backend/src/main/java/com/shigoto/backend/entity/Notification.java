@@ -5,6 +5,9 @@ import lombok.*;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+/**
+ * Persists notification state and its domain relationships.
+ */
 @Entity
 @Table(name = "notifications", uniqueConstraints =
         @UniqueConstraint(name = "uk_notification_event", columnNames = "event_id"))
@@ -29,6 +32,9 @@ public class Notification {
     private LocalDateTime createdAt;
     private LocalDateTime readAt;
 
+    /**
+     * Initializes persistence defaults immediately before the entity is first stored.
+     */
     @PrePersist void prePersist() {
         if (createdAt == null) createdAt = LocalDateTime.now();
     }

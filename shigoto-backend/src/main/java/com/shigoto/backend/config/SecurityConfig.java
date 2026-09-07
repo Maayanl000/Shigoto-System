@@ -21,16 +21,28 @@ import org.springframework.security.web.authentication.session.SessionAuthentica
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
+/**
+ * Configures security behavior for the application.
+ * Required collaborators are supplied through Lombok-generated constructor injection.
+ */
 @Configuration
 @RequiredArgsConstructor
 public class SecurityConfig {
     private final UserRepository userRepository;
 
+    /**
+     * Provides the BCrypt encoder used to hash and verify stored credentials.
+     * @return a BCrypt password encoder
+     */
     @Bean
     PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
+    /**
+     * Loads application users and roles for Spring Security authentication.
+     * @return a user-details service backed by the application user repository
+     */
     @Bean
     UserDetailsService userDetailsService() {
         return email -> userRepository.findByEmail(email)
@@ -42,6 +54,12 @@ public class SecurityConfig {
                         "Invalid email or password"));
     }
 
+    /**
+     * Builds the DAO-backed authentication manager used by the session login flow.
+     * @param userDetailsService the user details service
+     * @param passwordEncoder the password encoder
+     * @return an authentication manager using the repository-backed user service and configured password encoder
+     */
     @Bean
     AuthenticationManager authenticationManager(
             UserDetailsService userDetailsService, PasswordEncoder passwordEncoder) {
@@ -50,11 +68,21 @@ public class SecurityConfig {
         return new ProviderManager(provider);
     }
 
+    /**
+     * Provides session-fixation protection for successful authentication.
+     * @return a strategy that changes the session identifier after authentication
+     */
     @Bean
     SessionAuthenticationStrategy sessionAuthenticationStrategy() {
         return new ChangeSessionIdAuthenticationStrategy();
     }
 
+    /**
+     * Configures CSRF cookies, endpoint authorization, session authentication, and logout handling.
+     * @param http the Spring Security HTTP configuration builder
+     * @return the configured application security filter chain
+     * @throws Exception if Spring Security cannot build the filter chain
+     */
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http

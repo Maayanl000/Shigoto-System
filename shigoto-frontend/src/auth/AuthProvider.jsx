@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { AuthContext } from './authContext';
 
+/**
+ * Provides session-backed authentication state and login, logout, and profile operations.
+ */
 export default function AuthProvider({ children }) {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);

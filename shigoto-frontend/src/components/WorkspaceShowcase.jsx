@@ -24,6 +24,9 @@ const workspaces = [
   },
 ];
 
+/**
+ * Renders a static preview for the requested workspace type.
+ */
 function WorkspaceMiniature({ type }) {
   if (type === 'candidate') {
     return (
@@ -69,6 +72,9 @@ function WorkspaceMiniature({ type }) {
   );
 }
 
+/**
+ * Renders the public showcase of Shigoto's role-specific workspaces.
+ */
 export default function WorkspaceShowcase() {
   return (
     <Box component="section" sx={{ py: { xs: 7, md: 9 }, bgcolor: '#DDE7F0', borderBlock: 1, borderColor: 'divider' }}>
@@ -90,7 +96,6 @@ export default function WorkspaceShowcase() {
                     <Typography variant="h6" component="h3" sx={{ mt: 2.5 }}>{workspace.title}</Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 1, minHeight: 64, lineHeight: 1.65 }}>{workspace.description}</Typography>
                     <Box sx={{ mt: 2.5, p: 1.5, border: 1, borderColor: 'divider', borderRadius: 1.5, bgcolor: '#F1F5F9' }}><WorkspaceMiniature type={workspace.preview} /></Box>
-                  <Typography variant="body2" fontWeight={800} color="text.secondary" sx={{ mt: 2.25 }}>Role-focused workspace</Typography>
                 </CardContent>
               </Card>
             </Grid>

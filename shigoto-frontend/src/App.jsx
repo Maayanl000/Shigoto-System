@@ -29,6 +29,9 @@ const roleHomes = {
   INTERVIEWER: '/interviewer',
 };
 
+/**
+ * Restricts child routes to authenticated users with the required role.
+ */
 function RequireRole({ role, children }) {
   const { user, loading, loggingOut } = useAuth();
 
@@ -67,11 +70,19 @@ function AppRoutes() {
   );
 }
 
+/**
+ * Restores the top-of-page position after route changes.
+ */
 function NavigationScrollManager() {
   const { pathname, hash } = useLocation();
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
+      if (hash === '#how-it-works') {
+        document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+
       if (hash === '#jobs') {
         document.getElementById('jobs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
@@ -86,6 +97,9 @@ function NavigationScrollManager() {
   return null;
 }
 
+/**
+ * Renders the app layout interface and coordinates its user interactions.
+ */
 function AppLayout() {
   const { pathname } = useLocation();
   const isPublicPage = publicPaths.includes(pathname);
@@ -109,6 +123,9 @@ function AppLayout() {
   );
 }
 
+/**
+ * Renders the app interface and coordinates its user interactions.
+ */
 function App() {
   return (
     <BrowserRouter>

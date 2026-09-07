@@ -1,6 +1,9 @@
 import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, Stack, TextField, Typography } from '@mui/material';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 
+/**
+ * Renders the feedback dialog interface and coordinates its user interactions.
+ */
 export default function FeedbackDialog({ interview, feedback, onFeedbackChange, onClose, onSubmit, busy, error }) {
   return (
     <Dialog open={Boolean(interview)} onClose={busy ? undefined : onClose} fullWidth maxWidth="sm">

@@ -3,12 +3,18 @@ import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack
 import { useAuth } from '../auth/authContext';
 import { isValidGithubProfile } from '../utils/githubProfile';
 
+/**
+ * Renders the profile completion dialog interface and coordinates its user interactions.
+ */
 export default function ProfileCompletionDialog({ open, onClose, onSaved }) {
   const { user, updateProfile } = useAuth();
   const [githubProfileUrl, setGithubProfileUrl] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  /**
+   * Validates the required profile fields and persists them through the authentication context.
+   */
   const handleSave = async () => {
     if (!isValidGithubProfile(githubProfileUrl)) {
       setError('Enter a valid GitHub profile URL, such as https://github.com/username.');
@@ -31,6 +37,9 @@ export default function ProfileCompletionDialog({ open, onClose, onSaved }) {
     }
   };
 
+  /**
+   * Closes the profile prompt only when no save request is active.
+   */
   const handleClose = () => {
     if (saving) return;
     setGithubProfileUrl('');

@@ -18,10 +18,16 @@ const statusColor = {
   CLOSED: 'default',
 };
 
+/**
+ * Extracts a user-safe message from an API failure with a stable fallback.
+ */
 function errorMessage(error, fallback) {
   return error.response?.data?.message || fallback;
 }
 
+/**
+ * Renders the job management interface and coordinates its user interactions.
+ */
 export default function JobManagement() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,6 +39,9 @@ export default function JobManagement() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
+  /**
+   * Loads jobs from the API and synchronizes page state.
+   */
   const loadJobs = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -63,6 +72,9 @@ export default function JobManagement() {
     };
   }, []);
 
+  /**
+   * Updates navigation or dialog state for open create.
+   */
   const openCreate = () => {
     setSelectedJob(null);
     setForm(emptyForm);
@@ -70,6 +82,9 @@ export default function JobManagement() {
     setDialog('create');
   };
 
+  /**
+   * Updates navigation or dialog state for open edit.
+   */
   const openEdit = (job) => {
     setSelectedJob(job);
     setForm({
@@ -83,10 +98,16 @@ export default function JobManagement() {
     setDialog('edit');
   };
 
+  /**
+   * Updates navigation or dialog state for close dialog.
+   */
   const closeDialog = () => {
     if (!saving) setDialog(null);
   };
 
+  /**
+   * Updates one editable job field and clears the current save error.
+   */
   const updateField = (event) => {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
@@ -94,6 +115,9 @@ export default function JobManagement() {
 
   const formIsInvalid = !form.title.trim() || !form.description.trim() || !form.location.trim();
 
+  /**
+   * Creates or updates a job from the active form, preserving optimistic-lock state.
+   */
   const saveJob = async () => {
     setSaving(true);
     setFormError('');
@@ -199,6 +223,9 @@ export default function JobManagement() {
   );
 }
 
+/**
+ * Renders the job fields interface and coordinates its user interactions.
+ */
 function JobFields({ form, updateField, showStatus }) {
   return (
     <>

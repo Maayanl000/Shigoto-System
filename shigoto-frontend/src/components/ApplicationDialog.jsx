@@ -7,10 +7,16 @@ import { useAuth } from '../auth/authContext';
 
 const MAX_CV_SIZE = 5 * 1024 * 1024;
 
+/**
+ * Checks both MIME type and extension before a CV upload is submitted.
+ */
 function isPdf(file) {
   return file?.type === 'application/pdf' || file?.name.toLowerCase().endsWith('.pdf');
 }
 
+/**
+ * Renders the application dialog interface and coordinates its user interactions.
+ */
 export default function ApplicationDialog({ open, onClose, job, onSubmitted }) {
   const { user } = useAuth();
   const [coverNote, setCoverNote] = useState('');
@@ -29,17 +35,26 @@ export default function ApplicationDialog({ open, onClose, job, onSubmitted }) {
   const isSubmitting = submissionStatus === 'submitting';
   const isSuccessful = submissionStatus === 'success';
 
+  /**
+   * Updates navigation or dialog state for clear submission feedback.
+   */
   const clearSubmissionFeedback = () => {
     setSubmissionStatus('idle');
     setSubmissionError('');
   };
 
+  /**
+   * Accepts a selected PDF CV, rejecting unsupported types or files above the upload limit.
+   */
   const handleFileChange = (event) => {
     setCvFile(event.target.files?.[0] || null);
     setCvTouched(true);
     clearSubmissionFeedback();
   };
 
+  /**
+   * Updates navigation or dialog state for reset form.
+   */
   const resetForm = () => {
     setCoverNote('');
     setCvFile(null);
@@ -48,16 +63,24 @@ export default function ApplicationDialog({ open, onClose, job, onSubmitted }) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  /**
+   * Closes the dialog only while an application submission is not in progress.
+   */
   const handleClose = () => {
     resetForm();
     onClose();
   };
 
+  /**
+   * Validates the application form, uploads it, and reports the successful submission to the parent view.
+   */
   const handleSubmit = async (event) => {
     event.preventDefault();
+    // Validate the selected PDF and current job before constructing multipart data.
     setCvTouched(true);
     if (cvError || !canSubmitJob || isSubmitting) return;
 
+    // Submit multipart data with session credentials supplied by the shared API client.
     setSubmissionStatus('submitting');
     setSubmissionError('');
     try {
@@ -69,6 +92,7 @@ export default function ApplicationDialog({ open, onClose, job, onSubmitted }) {
       setSubmissionStatus('success');
       onSubmitted?.(response.data);
     } catch (error) {
+      // Map authentication and duplicate conflicts to specific recovery guidance.
       if (error.response?.status === 401) {
         window.location.assign('/login');
         return;

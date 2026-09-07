@@ -8,6 +8,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Persists github data state and its domain relationships.
+ */
 @Entity
 @Table(name = "github_data", uniqueConstraints =
         @UniqueConstraint(name = "uk_github_data_candidate", columnNames = "candidate_id"))

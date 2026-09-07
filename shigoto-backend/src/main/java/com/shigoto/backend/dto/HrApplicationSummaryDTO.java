@@ -6,6 +6,9 @@ import com.shigoto.backend.entity.InterviewType;
 
 import java.time.LocalDateTime;
 
+/**
+ * Represents the compact application view displayed in the HR workflow board.
+ */
 public record HrApplicationSummaryDTO(
         Long applicationId,
         Long candidateId,
@@ -17,6 +20,12 @@ public record HrApplicationSummaryDTO(
         LocalDateTime statusChangedAt,
         InterviewType activeInterviewType
 ) {
+    /**
+     * Maps the supplied domain entity into this API response representation.
+     * @param application the application being processed
+     * @param activeInterviewType the active interview type
+     * @return a DTO populated from the supplied domain entity
+     */
     public static HrApplicationSummaryDTO from(Application application, InterviewType activeInterviewType) {
         var candidate = application.getCandidate();
         var job = application.getJob();

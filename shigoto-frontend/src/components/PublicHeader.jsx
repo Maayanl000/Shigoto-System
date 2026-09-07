@@ -20,18 +20,30 @@ const navButtonSx = {
   '&.active': { color: 'primary.main' },
 };
 
+/**
+ * Renders the public header interface and coordinates its user interactions.
+ */
 export default function PublicHeader() {
   const { user, loading, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
+  /**
+   * Updates navigation or dialog state for close menu.
+   */
   const closeMenu = () => setMobileOpen(false);
   const dashboardPath = roleHomes[user?.role] || '/';
+  /**
+   * Ends the current session and closes the mobile navigation menu.
+   */
   const handleLogout = async () => {
     closeMenu();
     await logout();
   };
+  /**
+   * Updates navigation or dialog state for go home.
+   */
   const goHome = () => {
     closeMenu();
     if (location.pathname === '/' && !location.hash) {
@@ -40,6 +52,9 @@ export default function PublicHeader() {
     }
     navigate('/');
   };
+  /**
+   * Updates navigation or dialog state for go jobs.
+   */
   const goJobs = () => {
     closeMenu();
     if (location.pathname === '/') {

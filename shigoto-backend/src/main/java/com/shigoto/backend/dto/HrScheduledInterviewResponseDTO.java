@@ -7,6 +7,9 @@ import com.shigoto.backend.entity.InterviewType;
 
 import java.time.LocalDateTime;
 
+/**
+ * Represents full interview scheduling and assignment details visible to HR.
+ */
 public record HrScheduledInterviewResponseDTO(
         Long interviewId,
         Long applicationId,
@@ -21,6 +24,11 @@ public record HrScheduledInterviewResponseDTO(
         Long version,
         Long applicationVersion
 ) {
+    /**
+     * Maps the supplied domain entity into this API response representation.
+     * @param interview the interview being processed
+     * @return a DTO populated from the supplied domain entity
+     */
     public static HrScheduledInterviewResponseDTO from(Interview interview) {
         var interviewer = interview.getInterviewer();
         return new HrScheduledInterviewResponseDTO(

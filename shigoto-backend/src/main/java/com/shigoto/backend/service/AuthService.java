@@ -26,6 +26,10 @@ import java.util.Locale;
 import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
+/**
+ * Validates candidate accounts, authenticates credentials, resolves role-scoped users, and updates candidate profiles.
+ * Required collaborators are supplied through Lombok-generated constructor injection.
+ */
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -41,7 +45,13 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final GithubDataRepository githubDataRepository;
 
+    /**
+     * Registers a candidate after validating identity fields, password constraints, GitHub profile, and email uniqueness.
+     * @param request the request payload
+     * @return a DTO representing the newly persisted candidate
+     */
     public AuthenticatedUserResponseDTO registerCandidate(RegisterRequestDTO request) {
+        // Validate the request shape before normalizing user-controlled identity fields.
         if (request == null) {
             throw new IllegalArgumentException("Registration details are required");
         }
@@ -59,6 +69,7 @@ public class AuthService {
             throw new DuplicateEmailException("User with this email already exists");
         }
 
+        // Hash the password while building the candidate entity; plaintext is never persisted.
         User user = User.builder()
                 .firstName(firstName)
                 .lastName(lastName)
@@ -78,6 +89,11 @@ public class AuthService {
         }
     }
 
+    /**
+     * Authenticates normalized email credentials through Spring Security.
+     * @param request the request payload
+     * @return the authenticated Spring Security principal and authorities
+     */
     public Authentication authenticate(LoginRequestDTO request) {
         if (request == null || request.password() == null || request.password().isBlank()) {
             throw new IllegalArgumentException("Email and password are required");
@@ -88,6 +104,11 @@ public class AuthService {
         );
     }
 
+    /**
+     * Resolves the currently authenticated account and converts it to the session-user representation.
+     * @param authentication the current Spring Security authentication
+     * @return a DTO representing the currently authenticated user
+     */
     public AuthenticatedUserResponseDTO getAuthenticatedUser(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new UsernameNotFoundException("Authenticated user was not found");
@@ -95,6 +116,11 @@ public class AuthService {
         return AuthenticatedUserResponseDTO.from(findByEmail(authentication.getName()));
     }
 
+    /**
+     * Resolves the authenticated account and requires it to have the candidate role.
+     * @param authentication the current Spring Security authentication
+     * @return the authenticated candidate entity
+     */
     public User getAuthenticatedCandidate(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new UsernameNotFoundException("Authenticated user was not found");
@@ -106,6 +132,11 @@ public class AuthService {
         return user;
     }
 
+    /**
+     * Resolves the authenticated account and requires an HR role with an assigned company.
+     * @param authentication the current Spring Security authentication
+     * @return the authenticated HR entity with company membership
+     */
     public User getAuthenticatedHr(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new UsernameNotFoundException("Authenticated user was not found");
@@ -120,6 +151,11 @@ public class AuthService {
         return user;
     }
 
+    /**
+     * Resolves the authenticated account and requires an interviewer role with an assigned company.
+     * @param authentication the current Spring Security authentication
+     * @return the authenticated interviewer entity with company membership
+     */
     public User getAuthenticatedInterviewer(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new UsernameNotFoundException("Authenticated user was not found");
@@ -134,10 +170,17 @@ public class AuthService {
         return user;
     }
 
+    /**
+     * Updates the authenticated candidate's profile and clears cached GitHub analysis when the GitHub account changes.
+     * @param request the request payload
+     * @param authentication the current Spring Security authentication
+     * @return a DTO containing the persisted profile values
+     */
     @Transactional
     public AuthenticatedUserResponseDTO updateCandidateProfile(
             CandidateProfileUpdateRequestDTO request,
             Authentication authentication) {
+        // Resolve the authenticated candidate only after validating the request shape.
         if (request == null) {
             throw new IllegalArgumentException("Profile details are required");
         }
@@ -145,6 +188,7 @@ public class AuthService {
         String githubProfileUrl = normalizeGithubProfileUrl(request.githubProfileUrl());
         String previousUsername = GithubProfileUrlParser.extractUsername(candidate.getGithubProfileUrl()).orElse(null);
         String updatedUsername = GithubProfileUrlParser.extractUsername(githubProfileUrl).orElse(null);
+        // Normalize profile fields and invalidate cached analysis when the GitHub identity changes.
         candidate.setFirstName(requireName(request.firstName(), "First name"));
         candidate.setLastName(requireName(request.lastName(), "Last name"));
         candidate.setGithubProfileUrl(githubProfileUrl);
@@ -161,6 +205,12 @@ public class AuthService {
         return AuthenticatedUserResponseDTO.from(userRepository.save(candidate));
     }
 
+    /**
+     * Normalizes optional profile text for consistent validation and persistence.
+     * @param value the value to validate or normalize
+     * @param fieldName the field name used in validation errors
+     * @return trimmed text, or {@code null} when the value is absent or blank
+     */
     private String normalizeOptionalProfileText(String value, String fieldName) {
         if (value == null || value.isBlank()) return null;
         String trimmed = value.trim();
@@ -173,11 +223,22 @@ public class AuthService {
         return trimmed;
     }
 
+    /**
+     * Looks up a user by email and fails when no account exists.
+     * @param email the email address
+     * @return the user registered with the supplied email
+     */
     private User findByEmail(String email) {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
 
+    /**
+     * Requires a non-blank, digit-free name and returns its trimmed form.
+     * @param value the value to validate or normalize
+     * @param fieldName the field name used in validation errors
+     * @return the validated, trimmed name
+     */
     private String requireName(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " is required");
@@ -192,6 +253,11 @@ public class AuthService {
         return trimmed;
     }
 
+    /**
+     * Trims a GitHub profile URL and verifies that it identifies a supported GitHub user profile.
+     * @param value the value to validate or normalize
+     * @return the trimmed profile URL, or {@code null} when the value is absent or blank
+     */
     private String normalizeGithubProfileUrl(String value) {
         if (value == null || value.isBlank()) return null;
         String trimmed = value.trim();
@@ -201,6 +267,11 @@ public class AuthService {
         return trimmed;
     }
 
+    /**
+     * Trims and lowercases an email address, then validates its length and syntax.
+     * @param value the value to validate or normalize
+     * @return the normalized email address
+     */
     private String normalizeAndValidateEmail(String value) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("Email is required");
@@ -215,6 +286,10 @@ public class AuthService {
         return normalized;
     }
 
+    /**
+     * Requires a password whose character length and BCrypt UTF-8 byte length are within supported limits.
+     * @param password the plaintext password supplied for validation
+     */
     private void validatePassword(String password) {
         if (password == null || password.isBlank()) {
             throw new IllegalArgumentException("Password is required");
@@ -225,7 +300,7 @@ public class AuthService {
             );
         }
         if (password.getBytes(StandardCharsets.UTF_8).length > 72) {
-            throw new IllegalArgumentException("Password must be at most 72 UTF-8 bytes");
+            throw new IllegalArgumentException("Password is too long. Please choose a shorter password.");
         }
     }
 }

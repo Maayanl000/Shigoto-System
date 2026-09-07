@@ -9,6 +9,9 @@ import PageSkeleton from '../components/PageSkeleton';
 import { useAuth } from '../auth/authContext';
 import { isValidGithubProfile } from '../utils/githubProfile';
 
+/**
+ * Validates that a profile name is present and contains no digits.
+ */
 function validateName(value, label) {
   if (!value.trim()) return `${label} is required.`;
   if (value.trim().length > 255) return `${label} must be at most 255 characters.`;
@@ -23,6 +26,9 @@ const employmentTypes = [
   { value: 'INTERNSHIP', label: 'Internship' },
 ];
 
+/**
+ * Renders the candidate profile interface and coordinates its user interactions.
+ */
 export default function CandidateProfile() {
   const { user, updateProfile } = useAuth();
   const navigate = useNavigate();
@@ -39,18 +45,27 @@ export default function CandidateProfile() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
+  /**
+   * Updates a text profile field and clears any existing field-specific error.
+   */
   const handleChange = (field) => (event) => {
     setValues((current) => ({ ...current, [field]: event.target.value }));
     setError('');
     setSuccess(false);
   };
 
+  /**
+   * Updates the tri-state student selection from the chosen form value.
+   */
   const handleStudentChange = (event) => {
     setValues((current) => ({ ...current, student: event.target.checked }));
     setError('');
     setSuccess(false);
   };
 
+  /**
+   * Validates the editable profile and persists normalized values through the authentication context.
+   */
   const handleSubmit = async (event) => {
     event.preventDefault();
     const firstNameError = validateName(values.firstName, 'First name');

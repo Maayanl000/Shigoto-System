@@ -20,6 +20,10 @@ import java.util.Objects;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 
+/**
+ * Renders and delivers candidate emails generated from recruitment workflow notifications.
+ * Required collaborators are supplied through Lombok-generated constructor injection.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -35,10 +39,14 @@ public class CandidateEmailService {
     @Value("${shigoto.email.from:}")
     private String from;
 
-    /** JMS redelivery makes email delivery at-least-once; consumers must tolerate possible duplicates. */
+    /**
+     * Consumes an asynchronous event, validates its references, and performs the configured downstream work.
+     * @param event the domain event to process
+     */
     @JmsListener(destination = "shigoto.emails")
     @Transactional(readOnly = true)
     public void receive(CandidateNotificationEvent event) {
+        // Reject disabled or malformed deliveries before loading domain references.
         if (!emailEnabled) return;
         if (event == null || event.eventId() == null || event.type() == null
                 || event.candidateUserId() == null || event.applicationId() == null) {
@@ -46,6 +54,7 @@ public class CandidateEmailService {
             return;
         }
 
+        // Verify that the candidate, application, and optional interview belong together.
         User candidate = userRepository.findById(event.candidateUserId()).orElse(null);
         Application application = applicationRepository.findById(event.applicationId()).orElse(null);
         if (candidate == null || candidate.getRole() != Role.CANDIDATE || application == null
@@ -65,6 +74,7 @@ public class CandidateEmailService {
             }
         }
 
+        // Render and send the message; failures propagate so the broker can apply redelivery policy.
         try {
             CandidateEmailRenderer.RenderedEmail rendered = renderer.render(event.type(), candidate, application, interview);
             MimeMessage message = mailSender.createMimeMessage();

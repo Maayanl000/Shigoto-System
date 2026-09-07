@@ -8,13 +8,21 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * Exposes user HTTP operations and delegates business rules to services.
+ * Required collaborators are supplied through Lombok-generated constructor injection.
+ */
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
 public class UserController {
     private final UserService userService;
 
-    /** @deprecated Use POST /api/auth/register. This compatibility route is candidate-only. */
+    /**
+     * Registers a candidate through the legacy user endpoint.
+     * @param request the request payload
+     * @return an HTTP response containing the registered candidate
+     */
     @Deprecated
     @PostMapping("/register")
     public ResponseEntity<AuthenticatedUserResponseDTO> registerUser(

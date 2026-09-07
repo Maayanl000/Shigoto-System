@@ -30,6 +30,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Manages company-scoped interview scheduling, candidate visibility, interviewer feedback, and workflow notifications.
+ * Required collaborators are supplied through Lombok-generated constructor injection.
+ */
 @Service
 @RequiredArgsConstructor
 public class InterviewService {
@@ -43,9 +47,17 @@ public class InterviewService {
     private final UserRepository userRepository;
     private final NotificationEventPublisher notificationEventPublisher;
 
+    /**
+     * Schedules an interview after validating company ownership, workflow stage, interviewer membership, timing, and slot availability.
+     * @param applicationId the application identifier
+     * @param request the request payload
+     * @param hr the authenticated HR user defining company scope
+     * @return the persisted interview as shown to HR
+     */
     @Transactional
     public HrScheduledInterviewResponseDTO scheduleInterview(
             Long applicationId, HrInterviewScheduleRequestDTO request, User hr) {
+        // Validate company scope, required scheduling inputs, and future timing.
         requireHrWithCompany(hr);
         if (request == null || request.interviewerId() == null || request.type() == null
                 || request.scheduledAt() == null) {
@@ -56,6 +68,7 @@ public class InterviewService {
         }
         String meetingLink = validateMeetingLink(request.meetingLink());
 
+        // Lock the operation to the current application version and permitted workflow stage.
         Application application = applicationRepository.findByIdAndJobCompany(applicationId, hr.getCompany())
                 .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
         requireExpectedVersion(application, request.applicationVersion());
@@ -66,6 +79,7 @@ public class InterviewService {
         }
         validateInterviewStage(application, request.type());
 
+        // Resolve a company interviewer and reject duplicate application or interviewer slots.
         User interviewer = userRepository.findByIdAndCompany(request.interviewerId(), hr.getCompany())
                 .orElseThrow(() -> new ResourceNotFoundException("Interviewer not found"));
         if (interviewer.getRole() != Role.INTERVIEWER) {
@@ -80,6 +94,7 @@ public class InterviewService {
             throw new IllegalArgumentException("Interviewer already has an interview at this time");
         }
 
+        // Persist the interview and related workflow transition before publishing the notification.
         Interview interview = Interview.builder()
                 .application(application)
                 .interviewer(interviewer)
@@ -99,6 +114,11 @@ public class InterviewService {
         return HrScheduledInterviewResponseDTO.from(saved);
     }
 
+    /**
+     * Lists interviewer accounts belonging to the authenticated HR user's company.
+     * @param hr the authenticated HR user defining company scope
+     * @return selectable interviewer identities for the HR user's company
+     */
     @Transactional(readOnly = true)
     public List<HrInterviewerOptionDTO> getCompanyInterviewers(User hr) {
         requireHrWithCompany(hr);
@@ -106,9 +126,17 @@ public class InterviewService {
                 .stream().map(HrInterviewerOptionDTO::from).toList();
     }
 
+    /**
+     * Reschedules a company interview after checking its version, future time, replacement interviewer, and slot availability.
+     * @param interviewId the interview identifier
+     * @param request the request payload
+     * @param hr the authenticated HR user defining company scope
+     * @return the persisted interview with its revised schedule
+     */
     @Transactional
     public HrScheduledInterviewResponseDTO rescheduleInterview(
             Long interviewId, HrInterviewRescheduleRequestDTO request, User hr) {
+        // Revalidate company scope, future timing, and the interview's optimistic-lock version.
         requireHrWithCompany(hr);
         if (request == null || request.interviewerId() == null || request.scheduledAt() == null) {
             throw new IllegalArgumentException("Interviewer and scheduled time are required");
@@ -122,6 +150,7 @@ public class InterviewService {
         if (interview.getStatus() != InterviewStatus.SCHEDULED) {
             throw new IllegalArgumentException("Only a scheduled interview can be rescheduled");
         }
+        // Check the replacement interviewer against all other active slots before mutation.
         User interviewer = userRepository.findByIdAndCompany(request.interviewerId(), hr.getCompany())
                 .orElseThrow(() -> new ResourceNotFoundException("Interviewer not found"));
         if (interviewer.getRole() != Role.INTERVIEWER) {
@@ -144,6 +173,13 @@ public class InterviewService {
         return HrScheduledInterviewResponseDTO.from(saved);
     }
 
+    /**
+     * Cancels a company interview after verifying that the supplied version is current.
+     * @param interviewId the interview identifier
+     * @param expectedVersion the client-visible version used for optimistic locking
+     * @param hr the authenticated HR user defining company scope
+     * @return the persisted interview in the cancelled state
+     */
     @Transactional
     public HrScheduledInterviewResponseDTO cancelInterview(Long interviewId, Long expectedVersion, User hr) {
         Interview interview = findHrCompanyInterview(interviewId, hr);
@@ -169,6 +205,12 @@ public class InterviewService {
         return HrScheduledInterviewResponseDTO.from(saved);
     }
 
+    /**
+     * Lists interviews for an application owned by the authenticated HR user's company.
+     * @param applicationId the application identifier
+     * @param hr the authenticated HR user defining company scope
+     * @return HR-facing interview details for the application
+     */
     @Transactional(readOnly = true)
     public List<HrScheduledInterviewResponseDTO> getHrApplicationInterviews(Long applicationId, User hr) {
         requireHrWithCompany(hr);
@@ -178,6 +220,12 @@ public class InterviewService {
                 .stream().map(HrScheduledInterviewResponseDTO::from).toList();
     }
 
+    /**
+     * Lists interviews for an application after verifying that the application belongs to the candidate.
+     * @param applicationId the application identifier
+     * @param candidate the candidate being processed
+     * @return candidate-visible interview details for the owned application
+     */
     @Transactional(readOnly = true)
     public List<CandidateInterviewResponseDTO> getCandidateInterviews(Long applicationId, User candidate) {
         if (candidate == null || candidate.getRole() != Role.CANDIDATE) {
@@ -195,6 +243,11 @@ public class InterviewService {
                 .toList();
     }
 
+    /**
+     * Lists all interviews associated with applications owned by the candidate.
+     * @param candidate the candidate being processed
+     * @return candidate-visible interview details across the candidate's applications
+     */
     @Transactional(readOnly = true)
     public List<CandidateInterviewResponseDTO> getCandidateInterviews(User candidate) {
         requireCandidate(candidate);
@@ -204,6 +257,11 @@ public class InterviewService {
                 .toList();
     }
 
+    /**
+     * Lists interviews assigned to the authenticated interviewer.
+     * @param interviewer the authenticated interviewer
+     * @return interviewer-facing details for assigned interviews
+     */
     @Transactional(readOnly = true)
     public List<InterviewerInterviewResponseDTO> getInterviewerInterviews(User interviewer) {
         requireInterviewer(interviewer);
@@ -213,6 +271,14 @@ public class InterviewService {
                 .toList();
     }
 
+    /**
+     * Completes an assigned interview with validated feedback after checking the interview version.
+     * @param interviewId the interview identifier
+     * @param feedback the feedback text
+     * @param expectedVersion the client-visible version used for optimistic locking
+     * @param interviewer the authenticated interviewer
+     * @return the completed interview containing the persisted feedback
+     */
     @Transactional
     public InterviewerInterviewResponseDTO submitInterviewerFeedback(
             Long interviewId, String feedback, Long expectedVersion, User interviewer) {
@@ -229,6 +295,14 @@ public class InterviewService {
         return InterviewerInterviewResponseDTO.from(interviewRepository.saveAndFlush(interview));
     }
 
+    /**
+     * Replaces internal notes on an interview assigned to the interviewer after checking its version.
+     * @param interviewId the interview identifier
+     * @param notes the internal notes text
+     * @param expectedVersion the client-visible version used for optimistic locking
+     * @param interviewer the authenticated interviewer
+     * @return the interview containing the persisted internal notes
+     */
     @Transactional
     public InterviewerInterviewResponseDTO updateInterviewerNotes(
             Long interviewId, String notes, Long expectedVersion, User interviewer) {
@@ -244,6 +318,12 @@ public class InterviewService {
         return InterviewerInterviewResponseDTO.from(interviewRepository.saveAndFlush(interview));
     }
 
+    /**
+     * Loads the candidate and application context needed by an assigned interviewer to conduct a review.
+     * @param applicationId the application identifier
+     * @param interviewer the authenticated interviewer
+     * @return the assigned application's candidate-review view
+     */
     @Transactional(readOnly = true)
     public InterviewerCandidateReviewDTO getInterviewerCandidateReview(Long applicationId, User interviewer) {
         requireInterviewer(interviewer);
@@ -262,6 +342,11 @@ public class InterviewService {
         return InterviewerCandidateReviewDTO.from(application);
     }
 
+    /**
+     * Converts an interview entity into the subset of scheduling details visible to a candidate.
+     * @param interview the interview being processed
+     * @return a candidate-facing interview DTO
+     */
     private CandidateInterviewResponseDTO toCandidateResponseDTO(Interview interview) {
         User interviewer = interview.getInterviewer();
         Job job = interview.getApplication().getJob();
@@ -280,12 +365,20 @@ public class InterviewService {
         );
     }
 
+    /**
+     * Requires the supplied user to have the candidate role.
+     * @param candidate the candidate being processed
+     */
     private void requireCandidate(User candidate) {
         if (candidate == null || candidate.getRole() != Role.CANDIDATE) {
             throw new AccessDeniedException("Candidate access is required");
         }
     }
 
+    /**
+     * Requires the supplied user to be an interviewer assigned to a company.
+     * @param interviewer the authenticated interviewer
+     */
     private void requireInterviewer(User interviewer) {
         if (interviewer == null || interviewer.getRole() != Role.INTERVIEWER) {
             throw new AccessDeniedException("Interviewer access is required");
@@ -295,6 +388,11 @@ public class InterviewService {
         }
     }
 
+    /**
+     * Requires non-blank interviewer feedback and returns its trimmed form.
+     * @param feedback the feedback text
+     * @return the validated, trimmed feedback
+     */
     private String validateFeedback(String feedback) {
         if (feedback == null || feedback.isBlank()) {
             throw new IllegalArgumentException("Feedback is required");
@@ -306,6 +404,10 @@ public class InterviewService {
         return trimmedFeedback;
     }
 
+    /**
+     * Requires an HR user with an assigned company so interview operations remain company-scoped.
+     * @param hr the authenticated HR user defining company scope
+     */
     private void requireHrWithCompany(User hr) {
         if (hr == null || hr.getRole() != Role.HR) {
             throw new AccessDeniedException("HR access is required");
@@ -315,12 +417,23 @@ public class InterviewService {
         }
     }
 
+    /**
+     * Resolves an interview only when its application belongs to the authenticated HR user's company.
+     * @param interviewId the interview identifier
+     * @param hr the authenticated HR user defining company scope
+     * @return the interview within the HR user's company
+     */
     private Interview findHrCompanyInterview(Long interviewId, User hr) {
         requireHrWithCompany(hr);
         return interviewRepository.findByIdAndApplicationJobCompany(interviewId, hr.getCompany())
                 .orElseThrow(() -> new ResourceNotFoundException("Interview not found"));
     }
 
+    /**
+     * Verifies that the application workflow and completed prerequisites permit the requested interview type.
+     * @param application the application being processed
+     * @param type the requested domain type
+     */
     private void validateInterviewStage(Application application, InterviewType type) {
         ApplicationStatus status = application.getStatus();
         if (type == InterviewType.HR && status != ApplicationStatus.APPLIED) {
@@ -342,15 +455,30 @@ public class InterviewService {
         }
     }
 
+    /**
+     * Checks whether the application has a submitted home task approved by its reviewer.
+     * @param application the application being processed
+     * @return {@code true} when the home task was submitted and approved; otherwise {@code false}
+     */
     private boolean hasApprovedHomeTask(Application application) {
         return application.getTaskRepoUrl() != null && !application.getTaskRepoUrl().isBlank();
     }
 
+    /**
+     * Checks whether a home task has been assigned to the application.
+     * @param application the application being processed
+     * @return {@code true} when task instructions are present; otherwise {@code false}
+     */
     private boolean hasHomeTask(Application application) {
         return application.getTaskInstructions() != null || application.getTaskDeadline() != null
                 || application.getTaskRepoUrl() != null || application.getTaskReviewer() != null;
     }
 
+    /**
+     * Requires an HTTP or HTTPS meeting URL and returns its trimmed form.
+     * @param value the value to validate or normalize
+     * @return the validated, trimmed meeting URL
+     */
     private String validateMeetingLink(String value) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("Meeting link is required");
@@ -372,6 +500,11 @@ public class InterviewService {
         }
     }
 
+    /**
+     * Rejects a mutation when the client version is missing or differs from the persisted application version.
+     * @param application the application being processed
+     * @param expectedVersion the client-visible version used for optimistic locking
+     */
     private void requireExpectedVersion(Application application, Long expectedVersion) {
         if (expectedVersion == null) {
             throw new IllegalArgumentException("Application version is required");
@@ -381,6 +514,11 @@ public class InterviewService {
         }
     }
 
+    /**
+     * Rejects a mutation when the client version is missing or differs from the persisted interview version.
+     * @param interview the interview being processed
+     * @param expectedVersion the client-visible version used for optimistic locking
+     */
     private void requireExpectedVersion(Interview interview, Long expectedVersion) {
         if (expectedVersion == null) {
             throw new IllegalArgumentException("Interview version is required");
@@ -390,6 +528,11 @@ public class InterviewService {
         }
     }
 
+    /**
+     * Persists an interview and translates database slot collisions into a domain conflict.
+     * @param interview the interview being processed
+     * @return the persisted interview
+     */
     private Interview saveWithSlotConflictMapping(Interview interview) {
         try {
             return interviewRepository.saveAndFlush(interview);
@@ -401,6 +544,11 @@ public class InterviewService {
         }
     }
 
+    /**
+     * Inspects a persistence failure chain for an active interview-slot constraint violation.
+     * @param failure the failure
+     * @return {@code true} when the exception chain reports the active-slot uniqueness constraint; otherwise {@code false}
+     */
     private boolean isActiveSlotConflict(Throwable failure) {
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause instanceof ConstraintViolationException constraintFailure
@@ -416,6 +564,11 @@ public class InterviewService {
         return false;
     }
 
+    /**
+     * Publishes a candidate notification event after the surrounding transaction commits.
+     * @param interview the interview being processed
+     * @param type the requested domain type
+     */
     private void publish(Interview interview, NotificationType type) {
         Application application = interview.getApplication();
         notificationEventPublisher.publishAfterCommit(CandidateNotificationEvent.of(type,

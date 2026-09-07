@@ -1,7 +1,10 @@
 package com.shigoto.backend.entity;
 
+/**
+ * Defines the supported interview status domain values.
+ */
 public enum InterviewStatus {
-    SCHEDULED,  // מתוכנן
-    COMPLETED,  // הושלם (הוזן משוב)
-    CANCELED    // בוטל
+    SCHEDULED,  // Awaiting the scheduled meeting.
+    COMPLETED,  // Completed with interviewer feedback.
+    CANCELED    // Canceled before completion.
 }

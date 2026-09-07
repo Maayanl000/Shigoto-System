@@ -24,6 +24,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * Exposes hr application HTTP operations and delegates business rules to services.
+ * Required collaborators are supplied through Lombok-generated constructor injection.
+ */
 @RestController
 @RequestMapping("/api/hr/applications")
 @RequiredArgsConstructor
@@ -31,6 +35,12 @@ public class HrApplicationController {
     private final ApplicationService applicationService;
     private final AuthService authService;
 
+    /**
+     * Returns detailed application data within the authenticated HR user's company.
+     * @param applicationId the application identifier
+     * @param authentication the current Spring Security authentication
+     * @return the HR-facing details for the requested application
+     */
     @GetMapping("/{applicationId}")
     public HrApplicationDetailsDTO getApplication(
             @PathVariable Long applicationId, Authentication authentication) {
@@ -38,6 +48,12 @@ public class HrApplicationController {
         return applicationService.getHrApplicationDetails(applicationId, hr);
     }
 
+    /**
+     * Streams a stored CV as an attachment after enforcing candidate ownership or HR company scope.
+     * @param applicationId the application identifier
+     * @param authentication the current Spring Security authentication
+     * @return an HTTP attachment response containing the stored CV resource
+     */
     @GetMapping("/{applicationId}/cv")
     public ResponseEntity<Resource> downloadCv(
             @PathVariable Long applicationId, Authentication authentication) {
@@ -51,6 +67,13 @@ public class HrApplicationController {
                 .body(download.resource());
     }
 
+    /**
+     * Updates internal notes on a company-scoped application or assigned interview.
+     * @param applicationId the application identifier
+     * @param request the request payload
+     * @param authentication the current Spring Security authentication
+     * @return the application containing the persisted internal HR notes
+     */
     @PutMapping("/{applicationId}/notes")
     public HrApplicationDetailsDTO updateNotes(
             @PathVariable Long applicationId,
@@ -61,6 +84,13 @@ public class HrApplicationController {
         return applicationService.updateHrNotes(applicationId, request.hrNotes(), request.version(), hr);
     }
 
+    /**
+     * Transitions a company-scoped application to the requested workflow status.
+     * @param applicationId the application identifier
+     * @param request the request payload
+     * @param authentication the current Spring Security authentication
+     * @return the application after the requested workflow transition
+     */
     @PutMapping("/{applicationId}/status")
     public HrApplicationDetailsDTO updateStatus(
             @PathVariable Long applicationId,
@@ -74,6 +104,13 @@ public class HrApplicationController {
                 applicationId, request.status(), request.version(), hr);
     }
 
+    /**
+     * Rejects a company-scoped application with candidate-facing feedback.
+     * @param applicationId the application identifier
+     * @param request the request payload
+     * @param authentication the current Spring Security authentication
+     * @return the rejected application with candidate-facing feedback
+     */
     @PutMapping("/{applicationId}/reject")
     public HrApplicationDetailsDTO rejectApplication(
             @PathVariable Long applicationId,
@@ -85,6 +122,13 @@ public class HrApplicationController {
                 request == null ? null : request.version(), hr);
     }
 
+    /**
+     * Updates candidate-facing feedback on a company-scoped application.
+     * @param applicationId the application identifier
+     * @param request the request payload
+     * @param authentication the current Spring Security authentication
+     * @return the application containing the persisted candidate feedback
+     */
     @PutMapping("/{applicationId}/candidate-feedback")
     public HrApplicationDetailsDTO updateCandidateFeedback(
             @PathVariable Long applicationId,
@@ -96,6 +140,13 @@ public class HrApplicationController {
                 request == null ? null : request.version(), hr);
     }
 
+    /**
+     * Assigns home-task instructions, a deadline, and a reviewer to a company application.
+     * @param applicationId the application identifier
+     * @param request the request payload
+     * @param authentication the current Spring Security authentication
+     * @return the application containing the assigned task, deadline, and reviewer
+     */
     @PostMapping("/{applicationId}/home-task")
     public HrApplicationDetailsDTO assignHomeTask(
             @PathVariable Long applicationId,
@@ -110,6 +161,13 @@ public class HrApplicationController {
                 request.version(), hr);
     }
 
+    /**
+     * Changes the deadline of an existing home task using optimistic locking.
+     * @param applicationId the application identifier
+     * @param request the request payload
+     * @param authentication the current Spring Security authentication
+     * @return the application containing the revised home-task deadline
+     */
     @PutMapping("/{applicationId}/home-task/deadline")
     public HrApplicationDetailsDTO updateHomeTaskDeadline(
             @PathVariable Long applicationId,

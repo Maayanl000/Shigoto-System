@@ -9,6 +9,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+/**
+ * Publishes candidate notification events after successful transactions.
+ * Required collaborators are supplied through Lombok-generated constructor injection.
+ */
 @Component @RequiredArgsConstructor @Slf4j
 public class NotificationEventPublisher {
     public static final String QUEUE = "shigoto.notifications";
@@ -17,16 +21,24 @@ public class NotificationEventPublisher {
     @Value("${shigoto.email.enabled:false}")
     private boolean emailEnabled;
 
+    /**
+     * Logs whether candidate email publication is enabled when the publisher starts.
+     */
     @PostConstruct
     void logEmailPublicationConfiguration() {
         log.info("Candidate email JMS publication enabled: {}", emailEnabled);
     }
 
+    /**
+     * Defers event publication until the surrounding database transaction commits successfully.
+     * @param event the domain event to process
+     */
     public void publishAfterCommit(CandidateNotificationEvent event) {
         if (!TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Notification events require an active business transaction");
         }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            /** Publishes candidate notifications only after the database commit succeeds. */
             @Override public void afterCommit() {
                 log.info("Candidate event {} type {}: notification JMS publication to {} attempted; email enabled: {}",
                         event.eventId(), event.type(), QUEUE, emailEnabled);
@@ -41,6 +53,12 @@ public class NotificationEventPublisher {
                 }
             }
 
+            /**
+             * Sends one event to a configured JMS destination without affecting the committed transaction.
+             * @param destination the target JMS queue
+             * @param event the candidate notification event
+             * @param description the destination description used for diagnostic logging
+             */
             private void publish(String destination, CandidateNotificationEvent event, String description) {
                 try {
                     jmsTemplate.convertAndSend(destination, event);

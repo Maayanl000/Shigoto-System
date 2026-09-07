@@ -1,6 +1,9 @@
 import { Alert, Button, Card, CardContent, Divider, Grid, TextField, Typography } from '@mui/material';
 import PageSkeleton from '../components/PageSkeleton';
 
+/**
+ * Renders the application form interface and coordinates its user interactions.
+ */
 export default function ApplicationForm() {
   return (
     <PageSkeleton title="Job Application" description="Apply for a selected open position.">

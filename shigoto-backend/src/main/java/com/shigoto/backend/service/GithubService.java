@@ -17,6 +17,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+/**
+ * Queries public GitHub profile and repository data to summarize a candidate's development activity.
+ */
 @Service
 @Slf4j
 public class GithubService {
@@ -25,6 +28,11 @@ public class GithubService {
 
     private final RestClient restClient;
 
+    /**
+     * Creates a GitHub API client from the configured base URL and optional access token.
+     * @param baseUrl the base url
+     * @param token the token
+     */
     @Autowired
     public GithubService(
             @Value("${shigoto.github.base-url:https://api.github.com}") String baseUrl,
@@ -32,6 +40,12 @@ public class GithubService {
         this(RestClient.builder(), baseUrl, token);
     }
 
+    /**
+     * Creates a GitHub client around the supplied builder for production use and focused tests.
+     * @param restClientBuilder the Spring REST client builder
+     * @param baseUrl the GitHub API base URL
+     * @param token the optional bearer token used for authenticated rate limits
+     */
     GithubService(RestClient.Builder restClientBuilder, String baseUrl, String token) {
         RestClient.Builder builder = restClientBuilder.baseUrl(baseUrl)
                 .defaultHeader("Accept", "application/vnd.github+json");
@@ -41,7 +55,13 @@ public class GithubService {
         this.restClient = builder.build();
     }
 
+    /**
+     * Fetches public GitHub repositories and summarizes languages and recent activity.
+     * @param username the username
+     * @return aggregate public-repository count, ranked languages, and latest push time
+     */
     public GithubAnalysisResult analyze(String username) {
+        // Fetch profile metadata and repositories before aggregating repository language bytes.
         GithubUserResponse user = restClient.get()
                 .uri("/users/{username}", username)
                 .retrieve()
@@ -58,6 +78,7 @@ public class GithubService {
                 .retrieve()
                 .body(GithubRepositoryResponse[].class);
 
+        // Ignore forks and archived repositories before querying per-repository language data.
         List<GithubRepositoryResponse> repositories = response == null ? List.of() : Arrays.stream(response)
                 .filter(repository -> !repository.fork() && !repository.archived())
                 .toList();
@@ -74,6 +95,7 @@ public class GithubService {
                                 languageCounts.merge(language, bytes, Long::sum);
                             }
                         }));
+        // Rank languages deterministically by byte count and name.
         List<String> topLanguages = languageCounts.entrySet().stream()
                 .sorted(Map.Entry.<String, Long>comparingByValue(Comparator.reverseOrder())
                         .thenComparing(Map.Entry.comparingByKey()))
@@ -88,6 +110,12 @@ public class GithubService {
         return new GithubAnalysisResult(user.publicRepositoryCount(), topLanguages, latestPushAt);
     }
 
+    /**
+     * Fetches repository language byte counts, returning an empty map when GitHub cannot provide them.
+     * @param owner the owner
+     * @param repository the repository
+     * @return language names mapped to reported byte counts, or an empty map after a request failure
+     */
     private Map<String, Long> fetchLanguages(String owner, String repository) {
         try {
             Map<String, Long> languages = restClient.get()
@@ -102,11 +130,28 @@ public class GithubService {
         }
     }
 
+    /**
+     * Carries the aggregate GitHub metrics returned to the analysis processor.
+     * @param publicRepositoryCount the public repository count
+     * @param topLanguages the top languages
+     * @param latestPushAt the latest push at
+     */
     public record GithubAnalysisResult(
             int publicRepositoryCount, List<String> topLanguages, LocalDateTime latestPushAt) {}
 
+    /**
+     * Maps the public repository count returned by the GitHub user endpoint.
+     * @param publicRepositoryCount the public repository count
+     */
     record GithubUserResponse(@JsonProperty("public_repos") int publicRepositoryCount) {}
 
+    /**
+     * Maps repository metadata used to filter and rank recent activity.
+     * @param fork the fork
+     * @param archived the archived
+     * @param name the name to look up
+     * @param pushedAt the pushed at
+     */
     record GithubRepositoryResponse(
             boolean fork,
             boolean archived,

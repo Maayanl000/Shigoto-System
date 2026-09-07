@@ -18,18 +18,31 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+/**
+ * Lists public vacancies and manages company-scoped jobs for authenticated HR users.
+ * Required collaborators are supplied through Lombok-generated constructor injection.
+ */
 @Service
 @RequiredArgsConstructor
 public class JobService {
 
     private final JobRepository jobRepository;
 
+    /**
+     * Lists all jobs currently open to public candidates.
+     * @return public representations of all open jobs
+     */
     public List<PublicJobResponseDTO> getOpenJobs() {
         return jobRepository.findByStatus(JobStatus.OPEN).stream()
                 .map(PublicJobResponseDTO::from)
                 .toList();
     }
 
+    /**
+     * Lists jobs owned by the authenticated HR user's company, newest first.
+     * @param hr the authenticated HR user defining company scope
+     * @return HR-facing job DTOs for the authenticated user's company
+     */
     public List<HrJobResponseDTO> getJobsForHr(User hr) {
         requireHrWithCompany(hr);
         return jobRepository.findByCompanyOrderByCreatedAtDesc(hr.getCompany()).stream()
@@ -37,6 +50,12 @@ public class JobService {
                 .toList();
     }
 
+    /**
+     * Creates an open job for the authenticated HR user's company from validated request fields.
+     * @param hr the authenticated HR user defining company scope
+     * @param request the request payload
+     * @return an HR-facing DTO for the persisted job
+     */
     public HrJobResponseDTO createJobForHr(User hr, HrJobCreateRequestDTO request) {
         requireHrWithCompany(hr);
         if (request == null) {
@@ -52,6 +71,13 @@ public class JobService {
         return HrJobResponseDTO.from(jobRepository.save(job));
     }
 
+    /**
+     * Updates a company-owned job after validating request fields and the client-supplied version.
+     * @param hr the authenticated HR user defining company scope
+     * @param jobId the job identifier
+     * @param request the request payload
+     * @return an HR-facing DTO for the updated job
+     */
     @Transactional
     public HrJobResponseDTO updateJobForHr(User hr, Long jobId, HrJobUpdateRequestDTO request) {
         requireHrWithCompany(hr);
@@ -76,6 +102,10 @@ public class JobService {
         return HrJobResponseDTO.from(jobRepository.saveAndFlush(job));
     }
 
+    /**
+     * Requires an HR user with an assigned company so job operations remain company-scoped.
+     * @param hr the authenticated HR user defining company scope
+     */
     private void requireHrWithCompany(User hr) {
         if (hr == null || hr.getRole() != Role.HR) {
             throw new AccessDeniedException("HR access is required");
@@ -85,6 +115,12 @@ public class JobService {
         }
     }
 
+    /**
+     * Requires non-blank text and returns its trimmed form.
+     * @param value the value to validate or normalize
+     * @param fieldName the field name used in validation errors
+     * @return the validated, trimmed text
+     */
     private String requireText(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " is required");
@@ -92,6 +128,13 @@ public class JobService {
         return value.trim();
     }
 
+    /**
+     * Requires non-blank text whose trimmed length does not exceed the supplied maximum.
+     * @param value the value to validate or normalize
+     * @param fieldName the field name used in validation errors
+     * @param maximumLength the maximum permitted output length
+     * @return the validated, trimmed text
+     */
     private String requireText(String value, String fieldName, int maximumLength) {
         String trimmed = requireText(value, fieldName);
         if (trimmed.length() > maximumLength) {

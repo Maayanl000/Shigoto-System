@@ -1,5 +1,8 @@
 import { Box, Card, CardContent, Chip, Grid, Stack, Typography } from '@mui/material';
 
+/**
+ * Renders the page skeleton interface and coordinates its user interactions.
+ */
 export default function PageSkeleton({ title, description, sections, children }) {
   return (
     <Box sx={{ mt: { xs: 3, md: 5 }, textAlign: 'left' }}>

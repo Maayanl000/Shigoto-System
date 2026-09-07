@@ -1,6 +1,9 @@
 import { Alert, Button, Card, CardContent, Divider, FormControl, InputLabel, MenuItem, Select, TextField, Typography } from '@mui/material';
 import PageSkeleton from '../components/PageSkeleton';
 
+/**
+ * Renders the interview feedback interface and coordinates its user interactions.
+ */
 export default function InterviewFeedback() {
   return (
     <PageSkeleton title="Interview Feedback" description="Record structured feedback for an assigned interview.">

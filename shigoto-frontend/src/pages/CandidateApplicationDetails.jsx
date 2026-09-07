@@ -21,6 +21,9 @@ const interviewStatusLabels = {
   CANCELED: 'Canceled',
 };
 
+/**
+ * Formats an API timestamp for the user locale, with a safe fallback.
+ */
 function formatDateTime(value) {
   if (!value) return null;
   const date = new Date(value);
@@ -29,6 +32,9 @@ function formatDateTime(value) {
     : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 
+/**
+ * Formats an interview timestamp for the candidate's locale, with a fallback for missing values.
+ */
 function formatInterviewSchedule(value) {
   if (!value) return { date: 'Date unavailable', time: 'Time unavailable' };
   const scheduledAt = new Date(value);
@@ -42,6 +48,9 @@ function formatInterviewSchedule(value) {
   };
 }
 
+/**
+ * Validates that a task submission is an HTTPS GitHub repository URL.
+ */
 function validateRepositoryUrl(value) {
   if (!value.trim()) return 'GitHub Repository URL is required.';
   if (value.trim().length > 255) return 'GitHub Repository URL must be at most 255 characters.';
@@ -60,6 +69,9 @@ function validateRepositoryUrl(value) {
   }
 }
 
+/**
+ * Renders the candidate application details interface and coordinates its user interactions.
+ */
 export default function CandidateApplicationDetails() {
   const { applicationId } = useParams();
   const [application, setApplication] = useState(null);
@@ -166,8 +178,12 @@ export default function CandidateApplicationDetails() {
     ? [application.companyName, application.location].filter(Boolean).join(' · ')
     : '';
 
+  /**
+   * Validates and submits the task repository URL using the current application version.
+   */
   const handleTaskSubmission = async (event) => {
     event.preventDefault();
+    // Validate locally before sending the repository URL and optimistic-lock version.
     if (submitting || !canSubmitTask) return;
 
     const nextValidationError = validateRepositoryUrl(repositoryUrl);
@@ -191,6 +207,7 @@ export default function CandidateApplicationDetails() {
         return;
       }
       if (error.response?.status === 409) {
+        // Refresh stale application state after a concurrent workflow update.
         try {
           const refreshed = await api.get(`/applications/${application.id}`);
           setApplication(refreshed.data);
@@ -208,12 +225,16 @@ export default function CandidateApplicationDetails() {
     }
   };
 
+  /**
+   * Downloads the candidate's stored CV and releases the temporary browser object URL afterward.
+   */
   const handleCvDownload = async () => {
     if (!application || downloadingCv) return;
     setDownloadingCv(true);
     setCvDownloadError('');
     try {
       const response = await api.get(`/applications/${application.id}/cv`, { responseType: 'blob' });
+      // Use a temporary object URL so authenticated binary data is never exposed as a public link.
       const objectUrl = URL.createObjectURL(response.data);
       const link = document.createElement('a');
       link.href = objectUrl;

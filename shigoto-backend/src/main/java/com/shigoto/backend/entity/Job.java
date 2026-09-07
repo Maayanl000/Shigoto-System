@@ -4,6 +4,9 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
 
+/**
+ * Persists job state and its domain relationships.
+ */
 @Entity
 @Table(name = "jobs")
 @Getter
@@ -22,13 +25,11 @@ public class Job {
     private Long version;
 
     @Column(nullable = false)
-    private String title; // כותרת המשרה (למשל: "מפתח Java")
-
-    // כאן הטוויסט!
+    private String title;
     @Column(columnDefinition = "TEXT")
-    private String description; // תיאור המשרה
+    private String description;
 
-    private String location; // מיקום (למשל: "תל אביב" או "היברידי")
+    private String location;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id", nullable = false)
@@ -36,11 +37,14 @@ public class Job {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private JobStatus status; // הסטטוס שיצרנו עכשיו
+    private JobStatus status;
 
     @Column(updatable = false)
     private LocalDateTime createdAt;
 
+    /**
+     * Initializes persistence defaults immediately before the entity is first stored.
+     */
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();

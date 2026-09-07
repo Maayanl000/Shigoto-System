@@ -3,6 +3,9 @@ package com.shigoto.backend.dto;
 import com.shigoto.backend.entity.ApplicationStatus;
 import java.time.LocalDateTime;
 
+/**
+ * Represents candidate-visible application state, task details, and version information.
+ */
 public record ApplicationResponseDTO(
         Long id,
         Long candidateId,

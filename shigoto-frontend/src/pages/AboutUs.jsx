@@ -20,6 +20,9 @@ const principles = [
   'Focused experiences',
 ];
 
+/**
+ * Renders the about us interface and coordinates its user interactions.
+ */
 export default function AboutUs() {
   return (
     <Box sx={{ bgcolor: 'background.default' }}>

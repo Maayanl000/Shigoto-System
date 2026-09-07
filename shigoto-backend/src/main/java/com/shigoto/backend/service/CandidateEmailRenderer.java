@@ -14,6 +14,9 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
+/**
+ * Renders escaped HTML email content for candidate-facing recruitment notifications.
+ */
 @Component
 public class CandidateEmailRenderer {
     private static final DateTimeFormatter DATE_TIME =
@@ -22,6 +25,14 @@ public class CandidateEmailRenderer {
     @Value("${shigoto.frontend-url:}")
     private String frontendUrl;
 
+    /**
+     * Builds an escaped HTML email and subject for a candidate notification.
+     * @param type the requested domain type
+     * @param candidate the candidate being processed
+     * @param application the application being processed
+     * @param interview the interview being processed
+     * @return the rendered email subject and escaped HTML body
+     */
     public RenderedEmail render(NotificationType type, User candidate, Application application,
                                 Interview interview) {
         String jobTitle = escape(application.getJob().getTitle());
@@ -51,6 +62,14 @@ public class CandidateEmailRenderer {
         return new RenderedEmail(content.subject(), html);
     }
 
+    /**
+     * Selects the subject, message, details, and actions appropriate to the notification type.
+     * @param type the requested domain type
+     * @param application the application being processed
+     * @param interview the interview being processed
+     * @param jobTitle the job title
+     * @return the content fragments used to assemble the notification email
+     */
     private EventContent eventContent(NotificationType type, Application application, Interview interview,
                                       String jobTitle) {
         return switch (type) {
@@ -82,11 +101,24 @@ public class CandidateEmailRenderer {
         };
     }
 
+    /**
+     * Returns an HTML-safe company name for email content, with a fallback when no company is assigned.
+     * @param application the application being processed
+     * @return the escaped company name, or {@code "the company"} when unavailable
+     */
     private String companyName(Application application) {
         return application.getJob().getCompany() == null
                 ? "the company" : escape(application.getJob().getCompany().getName());
     }
 
+    /**
+     * Builds interview-specific email content and includes a join action only when the meeting link is usable.
+     * @param heading the heading
+     * @param message the exception or response message
+     * @param interview the interview being processed
+     * @param joinAllowed the join allowed
+     * @return email content describing the interview and any permitted join action
+     */
     private EventContent interviewContent(String heading, String message, Interview interview, boolean joinAllowed) {
         String detailRows = interview == null ? "" : row("Interview type", displayType(interview))
                 + row("Date and time", format(interview.getScheduledAt()));
@@ -95,6 +127,12 @@ public class CandidateEmailRenderer {
                 meetingUrl == null ? "" : button(meetingUrl, "Join meeting"));
     }
 
+    /**
+     * Builds rejection email content and includes candidate-facing feedback when HR supplied it.
+     * @param application the application being processed
+     * @param jobTitle the job title
+     * @return rejection email content with candidate feedback when available
+     */
     private EventContent rejectionContent(Application application, String jobTitle) {
         String feedback = application.getCandidateFeedback();
         if (feedback != null && !feedback.isBlank()) {
@@ -110,12 +148,22 @@ public class CandidateEmailRenderer {
                 "", "");
     }
 
+    /**
+     * Builds the candidate-facing application URL when a valid frontend base URL is configured.
+     * @param applicationId the application identifier
+     * @return the candidate application URL, or {@code null} when it cannot be built safely
+     */
     private String applicationUrl(Long applicationId) {
         String base = validHttpUrl(frontendUrl);
         if (base == null || applicationId == null) return null;
         return base.replaceAll("/+$", "") + "/candidate/applications/" + applicationId;
     }
 
+    /**
+     * Accepts only absolute HTTP or HTTPS URLs for optional email links.
+     * @param value the value to validate or normalize
+     * @return the normalized HTTP(S) URL, or {@code null} when the value is absent or unsafe
+     */
     private String validHttpUrl(String value) {
         if (value == null || value.isBlank()) return null;
         try {
@@ -128,6 +176,11 @@ public class CandidateEmailRenderer {
         return null;
     }
 
+    /**
+     * Converts an interview type to an HTML-safe label suitable for candidate email copy.
+     * @param interview the interview being processed
+     * @return an escaped, human-readable interview type label
+     */
     private String displayType(Interview interview) {
         String value = interview.getType() == null ? "Interview" : switch (interview.getType()) {
             case HR -> "HR interview";
@@ -137,37 +190,82 @@ public class CandidateEmailRenderer {
         return escape(value);
     }
 
+    /**
+     * Formats an optional interview or task timestamp for display in an HTML email.
+     * @param value the value to validate or normalize
+     * @return the escaped display timestamp, or {@code "Not provided"} for a missing value
+     */
     private String format(LocalDateTime value) {
         return value == null ? "Not provided" : escape(DATE_TIME.format(value));
     }
 
+    /**
+     * Escapes free-form text and preserves its line breaks for HTML email display.
+     * @param value the value to validate or normalize
+     * @return escaped text with line breaks converted to HTML, or a missing-value label
+     */
     private String multiline(String value) {
         return value == null || value.isBlank() ? "Not provided"
                 : escape(value).replace("\r\n", "<br>").replace("\n", "<br>").replace("\r", "<br>");
     }
 
+    /**
+     * Builds one escaped label-value row for an email details table.
+     * @param label the label
+     * @param value the value to validate or normalize
+     * @return an escaped HTML table row for the label and value
+     */
     private String row(String label, String value) {
         return "<tr><td style=\"padding:8px 12px;color:#64748b;vertical-align:top;width:34%;\">"
                 + escape(label) + "</td><td style=\"padding:8px 12px;color:#10233d;\">" + value + "</td></tr>";
     }
 
+    /**
+     * Wraps detail rows in the styled presentation table used by notification emails.
+     * @param rows the rows
+     * @return an HTML details table, or an empty string when there are no rows
+     */
     private String details(String rows) {
         return rows.isEmpty() ? "" : "<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" "
                 + "style=\"margin-top:20px;background:#f8fafc;border:1px solid #e1e7ec;border-radius:6px;font-size:14px;\">"
                 + rows + "</table>";
     }
 
+    /**
+     * Builds an HTML-safe call-to-action link for an email.
+     * @param url the url
+     * @param label the label
+     * @return escaped HTML for the call-to-action link
+     */
     private String button(String url, String label) {
         return "<a href=\"" + escape(url) + "\" style=\"display:inline-block;margin:0 10px 8px 0;padding:11px 18px;"
                 + "background:#087f8c;color:#ffffff;text-decoration:none;border-radius:5px;font-weight:700;font-size:14px;\">"
                 + escape(label) + "</a>";
     }
 
+    /**
+     * Escapes untrusted text before inserting it into email HTML.
+     * @param value the value to validate or normalize
+     * @return the value escaped for safe HTML rendering
+     */
     private String escape(String value) {
         return HtmlUtils.htmlEscape(value == null ? "" : value);
     }
 
+    /**
+     * Carries the final email subject and escaped HTML body.
+     * @param subject the subject
+     * @param html the html
+     */
     public record RenderedEmail(String subject, String html) {}
+    /**
+     * Carries the intermediate content fragments used to assemble an email.
+     * @param subject the subject
+     * @param heading the heading
+     * @param messageHtml the message html
+     * @param detailsHtml the details html
+     * @param actionHtml the action html
+     */
     private record EventContent(String subject, String heading, String messageHtml,
                                 String detailsHtml, String actionHtml) {}
 }

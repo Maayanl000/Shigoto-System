@@ -21,10 +21,16 @@ const employmentLabels = {
 
 const interviewTypeLabels = { HR: 'HR interview', TECHNICAL: 'Technical interview', MANAGER: 'Manager interview' };
 
+/**
+ * Converts an optional value to display text with a consistent missing-value fallback.
+ */
 function display(value) {
   return value === null || value === undefined || value === '' ? 'Not provided' : value;
 }
 
+/**
+ * Formats an API date for display, with a safe fallback for absent values.
+ */
 function formatDate(value) {
   if (!value) return 'Not provided';
   const date = new Date(value);
@@ -33,6 +39,9 @@ function formatDate(value) {
   }).format(date);
 }
 
+/**
+ * Converts an API timestamp to the local value required by a datetime-local input.
+ */
 function toLocalDateTimeInput(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -40,14 +49,23 @@ function toLocalDateTimeInput(value) {
     : new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 
+/**
+ * Produces the earliest selectable datetime-local value from the current time.
+ */
 function minimumLocalDateTime() {
   return toLocalDateTimeInput(new Date());
 }
 
+/**
+ * Renders the detail interface and coordinates its user interactions.
+ */
 function Detail({ label, value }) {
   return <Box><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="body2" sx={{ mt: 0.25 }}>{display(value)}</Typography></Box>;
 }
 
+/**
+ * Renders the github analysis interface and coordinates its user interactions.
+ */
 function GithubAnalysis({ analysis }) {
   if (!analysis) return null;
   return (
@@ -73,6 +91,9 @@ function GithubAnalysis({ analysis }) {
   );
 }
 
+/**
+ * Renders the candidate details interface and coordinates its user interactions.
+ */
 export default function CandidateDetails() {
   const { applicationId } = useParams();
   const [record, setRecord] = useState(null);
@@ -151,6 +172,9 @@ export default function CandidateDetails() {
     { label: 'Canceled', status: 'CANCELED' },
   ];
 
+  /**
+   * Loads record from the API and synchronizes page state.
+   */
   const loadRecord = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -198,6 +222,9 @@ export default function CandidateDetails() {
     return () => { active = false; };
   }, []);
 
+  /**
+   * Loads interviews from the API and synchronizes page state.
+   */
   const loadInterviews = useCallback(async () => {
     setInterviewsLoading(true);
     setInterviewsLoadedSuccessfully(false);
@@ -212,8 +239,12 @@ export default function CandidateDetails() {
     }
   }, [applicationId]);
 
+  /**
+   * Reloads application and interview state after an optimistic-lock conflict.
+   */
   const refreshAfterConflict = async (requestError) => {
     if (requestError.response?.status === 409) {
+      // Reload both versioned resources so the user can retry against current server state.
       await Promise.allSettled([loadRecord(), loadInterviews()]);
     }
   };
@@ -237,6 +268,9 @@ export default function CandidateDetails() {
     return () => { active = false; };
   }, [applicationId]);
 
+  /**
+   * Downloads the candidate CV and releases the temporary browser object URL afterward.
+   */
   const downloadCv = async () => {
     setDownloadingCv(true);
     setCvError('');
@@ -257,6 +291,9 @@ export default function CandidateDetails() {
     }
   };
 
+  /**
+   * Persists internal HR notes using the current application version.
+   */
   const saveNotes = async () => {
     setSavingNotes(true);
     setNotesMessage('');
@@ -273,6 +310,9 @@ export default function CandidateDetails() {
     }
   };
 
+  /**
+   * Applies an HR workflow transition using optimistic locking and refreshes the displayed application.
+   */
   const updateStatus = async (status) => {
     setStatusBusy(true);
     setStatusMessage('');
@@ -288,6 +328,9 @@ export default function CandidateDetails() {
     }
   };
 
+  /**
+   * Rejects the application with candidate-facing feedback and the current version.
+   */
   const rejectCandidate = async () => {
     setCandidateFeedbackBusy(true);
     setStatusMessage('');
@@ -308,6 +351,9 @@ export default function CandidateDetails() {
     }
   };
 
+  /**
+   * Persists candidate-facing feedback without changing the application status.
+   */
   const saveCandidateFeedback = async () => {
     setCandidateFeedbackBusy(true);
     setCandidateFeedbackMessage('');
@@ -327,7 +373,11 @@ export default function CandidateDetails() {
     }
   };
 
+  /**
+   * Assigns task instructions, deadline, and reviewer using the current application version.
+   */
   const sendHomeTask = async () => {
+    // Validate the assignment fields and future deadline before issuing the request.
     const validationMessage = homeTaskValidationMessage({
       instructions: taskInstructions, reviewerId: taskReviewerId, deadline: taskDeadline,
     });
@@ -357,6 +407,9 @@ export default function CandidateDetails() {
     }
   };
 
+  /**
+   * Persists a revised home-task deadline using optimistic locking.
+   */
   const updateHomeTaskDeadline = async () => {
     const parsedDeadline = new Date(taskDeadline);
     if (!taskDeadline || Number.isNaN(parsedDeadline.getTime()) || parsedDeadline <= new Date()) {
@@ -382,7 +435,11 @@ export default function CandidateDetails() {
     }
   };
 
+  /**
+   * Schedules or reschedules an interview from the active dialog values.
+   */
   const scheduleInterview = async () => {
+    // Apply shared scheduling validation before choosing create or reschedule semantics.
     const validationMessage = interviewValidationMessage({
       editing: Boolean(editingInterviewId), type: selectedInterviewType,
       interviewerId, interviewTime, meetingLink,
@@ -399,6 +456,7 @@ export default function CandidateDetails() {
         interviewerId: Number(interviewerId), scheduledAt: interviewTime, meetingLink: meetingLink.trim(),
         ...(editingInterviewId ? { version: editedInterview?.version } : { applicationVersion: record.version }),
       };
+      // Include the latest version when editing to protect against concurrent HR updates.
       const response = editingInterviewId
         ? await api.put(`/hr/interviews/${editingInterviewId}`, payload)
         : await api.post(`/hr/applications/${applicationId}/interviews`, { ...payload, type: selectedInterviewType });
@@ -418,6 +476,9 @@ export default function CandidateDetails() {
     }
   };
 
+  /**
+   * Updates navigation or dialog state for begin reschedule.
+   */
   const beginReschedule = (interview) => {
     const date = new Date(interview.scheduledAt);
     const localValue = Number.isNaN(date.getTime()) ? ''
@@ -430,6 +491,9 @@ export default function CandidateDetails() {
     setInterviewMessage('');
   };
 
+  /**
+   * Updates navigation or dialog state for close reschedule.
+   */
   const closeReschedule = () => {
     if (interviewBusy) return;
     setEditingInterviewId(null);
@@ -440,6 +504,9 @@ export default function CandidateDetails() {
     setInterviewMessage('');
   };
 
+  /**
+   * Cancels the selected interview using its current version and refreshes interview state.
+   */
   const cancelInterview = async (interviewId) => {
     setInterviewBusy(true);
     setInterviewMessage('');

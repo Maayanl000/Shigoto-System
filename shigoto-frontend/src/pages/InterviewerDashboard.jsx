@@ -9,6 +9,9 @@ import PageSkeleton from '../components/PageSkeleton';
 import FeedbackDialog from '../components/FeedbackDialog';
 import api from '../services/api';
 
+/**
+ * Formats an API timestamp for the user locale, with a safe fallback.
+ */
 function formatDateTime(value) {
   if (!value) return 'Date and time unavailable';
   const date = new Date(value);
@@ -16,10 +19,16 @@ function formatDateTime(value) {
     : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 
+/**
+ * Renders the empty state interface and coordinates its user interactions.
+ */
 function EmptyState({ children }) {
   return <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>{children}</Typography>;
 }
 
+/**
+ * Renders the interview item interface and coordinates its user interactions.
+ */
 function InterviewItem({ interview, onFeedback, onNotes }) {
   const upcoming = interview.status === 'SCHEDULED';
   return (
@@ -54,6 +63,9 @@ function InterviewItem({ interview, onFeedback, onNotes }) {
   );
 }
 
+/**
+ * Renders the interviewer dashboard interface and coordinates its user interactions.
+ */
 export default function InterviewerDashboard() {
   const [dashboardMode, setDashboardMode] = useState('active');
   const [interviews, setInterviews] = useState([]);
@@ -77,6 +89,9 @@ export default function InterviewerDashboard() {
   const [taskNotesBusy, setTaskNotesBusy] = useState(false);
   const [taskNotesError, setTaskNotesError] = useState('');
 
+  /**
+   * Loads interviews from the API and synchronizes page state.
+   */
   const loadInterviews = useCallback(async () => {
     setInterviewsLoading(true);
     setInterviewsError('');
@@ -92,6 +107,9 @@ export default function InterviewerDashboard() {
     }
   }, []);
 
+  /**
+   * Loads tasks from the API and synchronizes page state.
+   */
   const loadTasks = useCallback(async () => {
     setTasksLoading(true);
     setTasksError('');
@@ -123,6 +141,9 @@ export default function InterviewerDashboard() {
   const upcomingInterviews = useMemo(() => interviews.filter((item) => item.status === 'SCHEDULED'), [interviews]);
   const pastInterviews = useMemo(() => interviews.filter((item) => ['COMPLETED', 'CANCELED'].includes(item.status)), [interviews]);
 
+  /**
+   * Submits a home-task decision with optimistic locking and updates the local task list.
+   */
   const reviewTask = async (applicationId, decision) => {
     setReviewingId(applicationId);
     setTasksError('');
@@ -138,12 +159,18 @@ export default function InterviewerDashboard() {
     }
   };
 
+  /**
+   * Updates navigation or dialog state for open feedback.
+   */
   const openFeedback = (interview) => {
     setSelectedInterview(interview);
     setFeedback('');
     setFeedbackError('');
   };
 
+  /**
+   * Updates navigation or dialog state for close feedback.
+   */
   const closeFeedback = () => {
     if (feedbackBusy) return;
     setSelectedInterview(null);
@@ -151,6 +178,9 @@ export default function InterviewerDashboard() {
     setFeedbackError('');
   };
 
+  /**
+   * Submits interview feedback with optimistic locking and updates the local interview list.
+   */
   const submitFeedback = async () => {
     if (!selectedInterview || !feedback.trim()) return;
     setFeedbackBusy(true);
@@ -173,12 +203,18 @@ export default function InterviewerDashboard() {
     }
   };
 
+  /**
+   * Updates navigation or dialog state for open notes.
+   */
   const openNotes = (interview) => {
     setNotesInterview(interview);
     setPrivateNotes(interview.interviewerNotes || '');
     setNotesError('');
   };
 
+  /**
+   * Persists internal interview notes using the selected interview version.
+   */
   const saveNotes = async () => {
     setNotesBusy(true);
     setNotesError('');
@@ -199,12 +235,18 @@ export default function InterviewerDashboard() {
     }
   };
 
+  /**
+   * Updates navigation or dialog state for open task notes.
+   */
   const openTaskNotes = (task) => {
     setNotesTask(task);
     setTaskNotes(task.taskReviewNotes || '');
     setTaskNotesError('');
   };
 
+  /**
+   * Persists internal home-task review notes using the selected application version.
+   */
   const saveTaskNotes = async () => {
     setTaskNotesBusy(true);
     setTaskNotesError('');

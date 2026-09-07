@@ -7,6 +7,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+/**
+ * Publishes GitHub analysis requests after successful transactions.
+ * Required collaborators are supplied through Lombok-generated constructor injection.
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j
@@ -15,11 +19,16 @@ public class GithubAnalysisEventPublisher {
 
     private final JmsTemplate jmsTemplate;
 
+    /**
+     * Defers event publication until the surrounding database transaction commits successfully.
+     * @param event the domain event to process
+     */
     public void publishAfterCommit(GithubAnalysisRequestedEvent event) {
         if (!TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("GitHub analysis events require an active business transaction");
         }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            /** Publishes the queued analysis request after the database commit succeeds. */
             @Override
             public void afterCommit() {
                 try {

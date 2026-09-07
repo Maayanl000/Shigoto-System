@@ -6,14 +6,23 @@ import PageSkeleton from '../components/PageSkeleton';
 import api from '../services/api';
 import { hasDisplayValue } from '../utils/displayValue';
 
+/**
+ * Converts an optional review value to display text with a consistent fallback.
+ */
 const show = (value) => value || 'Not provided';
 
+/**
+ * Formats an API date for display, with a safe fallback for absent values.
+ */
 const formatDate = (value) => {
   if (!value) return 'Not provided';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? 'Not provided' : date.toLocaleString();
 };
 
+/**
+ * Renders the github analysis interface and coordinates its user interactions.
+ */
 function GithubAnalysis({ analysis }) {
   if (!analysis) return null;
   return <Box sx={{ pt: 1.5, mt: 0.5, borderTop: 1, borderColor: 'divider' }}>
@@ -35,6 +44,9 @@ function GithubAnalysis({ analysis }) {
   </Box>;
 }
 
+/**
+ * Renders the interviewer candidate review interface and coordinates its user interactions.
+ */
 export default function InterviewerCandidateReview() {
   const { applicationId } = useParams();
   const navigate = useNavigate();
@@ -46,18 +58,27 @@ export default function InterviewerCandidateReview() {
   const [notesBusy, setNotesBusy] = useState(false);
   const [notesError, setNotesError] = useState('');
 
+  /**
+   * Loads record from the API and synchronizes page state.
+   */
   const loadRecord = useCallback(async () => {
     const response = await api.get(`/interviewer/applications/${applicationId}`);
     setRecord(response.data);
     return response.data;
   }, [applicationId]);
 
+  /**
+   * Updates navigation or dialog state for open notes.
+   */
   const openNotes = () => {
     setTaskNotes(record.taskReviewNotes || '');
     setNotesError('');
     setNotesOpen(true);
   };
 
+  /**
+   * Persists internal task-review notes using the current application version.
+   */
   const saveNotes = async () => {
     setNotesBusy(true);
     setNotesError('');

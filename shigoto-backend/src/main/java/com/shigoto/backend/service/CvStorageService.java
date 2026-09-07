@@ -18,17 +18,29 @@ import java.util.Locale;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+/**
+ * Validates, stores, loads, and deletes candidate CV files within the configured storage directory.
+ */
 @Service
 public class CvStorageService {
     static final long MAX_CV_SIZE = 5L * 1024 * 1024;
     private static final byte[] PDF_SIGNATURE = {'%', 'P', 'D', 'F', '-'};
     private static final Pattern STORAGE_KEY_PATTERN = Pattern.compile(
-            "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.pdf$",
+            "^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+                    + "|demo-(?:eren-yeager|mikasa-ackerman|armin-arlert)-cv)\\.pdf$",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern DEMO_STORAGE_KEY_PATTERN = Pattern.compile(
+            "^demo-(?:eren-yeager|mikasa-ackerman|armin-arlert)-cv\\.pdf$",
             Pattern.CASE_INSENSITIVE
     );
 
     private final Path storageRoot;
 
+    /**
+     * Creates a CV store rooted at the normalized configured directory.
+     * @param storageDirectory the storage directory
+     */
     public CvStorageService(@Value("${shigoto.storage.cv-directory}") String storageDirectory) {
         this.storageRoot = Path.of(storageDirectory).toAbsolutePath().normalize();
         try {
@@ -38,6 +50,11 @@ public class CvStorageService {
         }
     }
 
+    /**
+     * Validates and atomically stores an uploaded PDF under an opaque key.
+     * @param file the uploaded CV file
+     * @return the opaque storage key assigned to the persisted CV
+     */
     public String store(MultipartFile file) {
         validate(file);
         String storageKey = UUID.randomUUID() + ".pdf";
@@ -67,6 +84,11 @@ public class CvStorageService {
         }
     }
 
+    /**
+     * Resolves an approved storage key to a readable CV resource.
+     * @param storageKey the opaque CV storage key
+     * @return a readable resource for the stored CV
+     */
     public Resource load(String storageKey) {
         if (storageKey == null || storageKey.isBlank()) {
             throw new ResourceNotFoundException("CV not found");
@@ -78,8 +100,13 @@ public class CvStorageService {
         return new FileSystemResource(storedFile);
     }
 
+    /**
+     * Deletes a stored CV when its key is valid and not a protected demo fixture.
+     * @param storageKey the opaque CV storage key
+     */
     public void delete(String storageKey) {
         if (storageKey == null || storageKey.isBlank()) return;
+        if (DEMO_STORAGE_KEY_PATTERN.matcher(storageKey).matches()) return;
         Path storedFile = resolveStorageKey(storageKey);
         try {
             Files.deleteIfExists(storedFile);
@@ -88,6 +115,10 @@ public class CvStorageService {
         }
     }
 
+    /**
+     * Validates that an uploaded CV is a non-empty PDF within the configured size limit.
+     * @param file the uploaded CV file
+     */
     private void validate(MultipartFile file) {
         if (file == null) throw new IllegalArgumentException("CV file is required");
         if (file.isEmpty() || file.getSize() == 0) throw new IllegalArgumentException("CV file must not be empty");
@@ -110,6 +141,11 @@ public class CvStorageService {
         }
     }
 
+    /**
+     * Resolves a storage key to a normalized path and rejects traversal outside the configured CV directory.
+     * @param storageKey the opaque CV storage key
+     * @return the normalized path contained within the configured CV storage directory
+     */
     private Path resolveStorageKey(String storageKey) {
         if (!STORAGE_KEY_PATTERN.matcher(storageKey).matches()) {
             throw new ResourceNotFoundException("CV file not found");

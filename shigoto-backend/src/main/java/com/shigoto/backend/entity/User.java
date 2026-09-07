@@ -5,8 +5,11 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
 
+/**
+ * Persists user state and its domain relationships.
+ */
 @Entity
-@Table(name = "users") // קריטי: משנים את שם הטבלה כדי לא להתנגש עם מילה שמורה במסד הנתונים
+@Table(name = "users") // Avoid the SQL-reserved singular table name "user".
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -59,7 +62,9 @@ public class User {
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
-    // פונקציה זו תרוץ אוטומטית רגע לפני שהמשתמש נשמר למסד הנתונים ותתעד את שעת היצירה
+    /**
+     * Initializes persistence defaults immediately before the entity is first stored.
+     */
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();

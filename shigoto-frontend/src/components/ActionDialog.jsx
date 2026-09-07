@@ -1,6 +1,9 @@
 import { Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, IconButton, Stack, Typography } from '@mui/material';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 
+/**
+ * Renders the action dialog interface and coordinates its user interactions.
+ */
 export default function ActionDialog({
   open, onClose, title, description, confirmLabel, children,
   onConfirm, confirmDisabled = false, loading = false,
@@ -27,6 +30,9 @@ export default function ActionDialog({
   );
 }
 
+/**
+ * Renders the box title interface and coordinates its user interactions.
+ */
 function BoxTitle({ title, description }) {
   return (
     <div>

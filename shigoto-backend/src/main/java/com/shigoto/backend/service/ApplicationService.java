@@ -6,7 +6,7 @@ import com.shigoto.backend.dto.HrApplicationDetailsDTO;
 import com.shigoto.backend.dto.StaffApplicationResponseDTO;
 import com.shigoto.backend.dto.InterviewerSubmittedTaskDTO;
 import com.shigoto.backend.entity.Application;
-import com.shigoto.backend.entity.ApplicationStatus; // הנה ה-import הנקי שהוספנו!
+import com.shigoto.backend.entity.ApplicationStatus;
 import com.shigoto.backend.entity.JobStatus;
 import com.shigoto.backend.entity.Role;
 import com.shigoto.backend.entity.TaskReviewDecision;
@@ -43,6 +43,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Manages the application lifecycle, CV access, home-task workflow, reviewer decisions, and candidate notifications.
+ * Required collaborators are supplied through Lombok-generated constructor injection.
+ */
 @Service
 @RequiredArgsConstructor
 public class ApplicationService {
@@ -56,8 +60,17 @@ public class ApplicationService {
     private final GithubAnalysisEventPublisher githubAnalysisEventPublisher;
     private final GithubDataRepository githubDataRepository;
 
+    /**
+     * Creates a candidate application after validating the candidate role, job availability, duplicate submission, and CV storage requirements.
+     * @param candidate the candidate being processed
+     * @param jobId the job identifier
+     * @param coverLetter the cover letter
+     * @param cv the uploaded CV file
+     * @return the persisted application as exposed to the candidate
+     */
     @Transactional
     public ApplicationResponseDTO createApplication(User candidate, Long jobId, String coverLetter, MultipartFile cv) {
+        // Validate actor, job availability, and duplicate ownership before storing the upload.
         if (candidate.getRole() != Role.CANDIDATE) {
             throw new IllegalArgumentException("Referenced user is not a candidate");
         }
@@ -73,6 +86,7 @@ public class ApplicationService {
             throw new DuplicateApplicationException("Candidate has already applied for this job");
         }
 
+        // Persist the file first, then compensate by deleting it if database persistence fails.
         String storageKey = cvStorageService.store(cv);
         try {
             Application application = Application.builder()
@@ -82,6 +96,7 @@ public class ApplicationService {
                     .coverLetter(coverLetter)
                     .build();
             Application saved = applicationRepository.saveAndFlush(application);
+            // Publish notifications and GitHub analysis only after the application transaction commits.
             publish(saved, NotificationType.APPLICATION_SUBMITTED);
             requestGithubAnalysis(saved);
             return toResponseDTO(saved);
@@ -96,7 +111,12 @@ public class ApplicationService {
             throw ex;
         }
     }
-    // פונקציה למחיקת מועמדות לפי ID
+    /**
+     * Deletes a company-owned application when its version is current and no dependent workflow data prevents deletion.
+     * @param applicationId the application identifier
+     * @param expectedVersion the client-visible version used for optimistic locking
+     * @param hr the authenticated HR user defining company scope
+     */
     @Transactional
     public void deleteApplication(Long applicationId, Long expectedVersion, User hr) {
         Application application = findHrCompanyApplication(applicationId, hr);
@@ -109,13 +129,22 @@ public class ApplicationService {
         applicationRepository.flush();
         cvStorageService.delete(application.getCvUrl());
     }
-    // הוסיפי את הפונקציה הזו בתוך ApplicationService
-
+    /**
+     * Lists all applications belonging to jobs at the authenticated HR user's company.
+     * @param hr the authenticated HR user defining company scope
+     * @return company-scoped application summaries ordered for HR review
+     */
     @Transactional(readOnly = true)
     public List<HrApplicationSummaryDTO> getAllApplications(User hr) {
         return getAllApplications(hr, null);
     }
 
+    /**
+     * Lists applications for a specific job owned by the authenticated HR user's company.
+     * @param hr the authenticated HR user defining company scope
+     * @param jobId the job identifier
+     * @return application summaries for the requested company job
+     */
     @Transactional(readOnly = true)
     public List<HrApplicationSummaryDTO> getAllApplications(User hr, Long jobId) {
         requireHrWithCompany(hr);
@@ -132,17 +161,37 @@ public class ApplicationService {
                 .toList();
     }
 
+    /**
+     * Loads detailed application information for an application owned by the HR user's company.
+     * @param applicationId the application identifier
+     * @param hr the authenticated HR user defining company scope
+     * @return the HR-facing details for the requested application
+     */
     @Transactional(readOnly = true)
     public HrApplicationDetailsDTO getHrApplicationDetails(Long applicationId, User hr) {
         return HrApplicationDetailsDTO.from(findHrCompanyApplication(applicationId, hr));
     }
 
+    /**
+     * Loads the stored CV for an application owned by the HR user's company.
+     * @param applicationId the application identifier
+     * @param hr the authenticated HR user defining company scope
+     * @return the CV resource together with its safe download filename
+     */
     public CvDownload getHrApplicationCv(Long applicationId, User hr) {
         Application application = findHrCompanyApplication(applicationId, hr);
         return new CvDownload("cv-application-" + applicationId + ".pdf",
                 cvStorageService.load(application.getCvUrl()));
     }
 
+    /**
+     * Replaces the internal HR notes on a company application after checking its expected version.
+     * @param applicationId the application identifier
+     * @param hrNotes the hr notes
+     * @param expectedVersion the client-visible version used for optimistic locking
+     * @param hr the authenticated HR user defining company scope
+     * @return the updated HR-facing application details
+     */
     @Transactional
     public HrApplicationDetailsDTO updateHrNotes(
             Long applicationId, String hrNotes, Long expectedVersion, User hr) {
@@ -156,9 +205,18 @@ public class ApplicationService {
         return HrApplicationDetailsDTO.from(applicationRepository.saveAndFlush(application));
     }
 
+    /**
+     * Moves a company application to an allowed HR-controlled status after enforcing stage prerequisites and optimistic locking.
+     * @param applicationId the application identifier
+     * @param targetStatus the target status
+     * @param expectedVersion the client-visible version used for optimistic locking
+     * @param hr the authenticated HR user defining company scope
+     * @return the application details after the status transition
+     */
     @Transactional
     public HrApplicationDetailsDTO transitionHrApplicationStatus(
             Long applicationId, ApplicationStatus targetStatus, Long expectedVersion, User hr) {
+        // Resolve within the HR user's company and reject stale or illegal workflow changes.
         Application application = findHrCompanyApplication(applicationId, hr);
         requireExpectedVersion(application, expectedVersion);
         ApplicationStatus currentStatus = application.getStatus();
@@ -166,6 +224,7 @@ public class ApplicationService {
             throw new IllegalArgumentException(
                     "Application cannot move from " + currentStatus + " to " + targetStatus);
         }
+        // Enforce stage-specific prerequisites before changing the persisted status.
         if (targetStatus == ApplicationStatus.OFFER
                 && !interviewRepository.existsByApplicationIdAndTypeAndStatus(
                 applicationId, com.shigoto.backend.entity.InterviewType.TECHNICAL,
@@ -186,6 +245,7 @@ public class ApplicationService {
                         "Application cannot return to APPLIED while an HR interview is scheduled or completed");
             }
         }
+        // Persist the transition before publishing any candidate-facing notification.
         application.transitionTo(targetStatus);
         HrApplicationDetailsDTO result = HrApplicationDetailsDTO.from(applicationRepository.saveAndFlush(application));
         if (targetStatus == ApplicationStatus.REJECTED) {
@@ -198,6 +258,14 @@ public class ApplicationService {
         return result;
     }
 
+    /**
+     * Rejects a company application, requiring candidate-facing feedback and a current application version.
+     * @param applicationId the application identifier
+     * @param candidateFeedback the candidate feedback
+     * @param expectedVersion the client-visible version used for optimistic locking
+     * @param hr the authenticated HR user defining company scope
+     * @return the rejected application with its persisted candidate feedback
+     */
     @Transactional
     public HrApplicationDetailsDTO rejectHrApplication(
             Long applicationId, String candidateFeedback, Long expectedVersion, User hr) {
@@ -214,6 +282,14 @@ public class ApplicationService {
         return result;
     }
 
+    /**
+     * Updates candidate-facing feedback for a company application after checking its expected version.
+     * @param applicationId the application identifier
+     * @param candidateFeedback the candidate feedback
+     * @param expectedVersion the client-visible version used for optimistic locking
+     * @param hr the authenticated HR user defining company scope
+     * @return the application details containing the updated feedback
+     */
     @Transactional
     public HrApplicationDetailsDTO updateCandidateFeedback(
             Long applicationId, String candidateFeedback, Long expectedVersion, User hr) {
@@ -226,6 +302,16 @@ public class ApplicationService {
         return HrApplicationDetailsDTO.from(applicationRepository.saveAndFlush(application));
     }
 
+    /**
+     * Assigns a home task, deadline, and company reviewer to an eligible application.
+     * @param applicationId the application identifier
+     * @param taskInstructions the task instructions
+     * @param deadline the requested home-task deadline
+     * @param reviewerId the reviewer id
+     * @param expectedVersion the client-visible version used for optimistic locking
+     * @param hr the authenticated HR user defining company scope
+     * @return the application details after the home task is assigned
+     */
     @Transactional
     public HrApplicationDetailsDTO assignHomeTask(
             Long applicationId, String taskInstructions, LocalDateTime deadline, Long reviewerId,
@@ -264,6 +350,14 @@ public class ApplicationService {
         return result;
     }
 
+    /**
+     * Changes the deadline of an existing home task after validating company ownership, workflow state, and version.
+     * @param applicationId the application identifier
+     * @param deadline the requested home-task deadline
+     * @param expectedVersion the client-visible version used for optimistic locking
+     * @param hr the authenticated HR user defining company scope
+     * @return the application details with the revised deadline
+     */
     @Transactional
     public HrApplicationDetailsDTO updateHomeTaskDeadline(
             Long applicationId, LocalDateTime deadline, Long expectedVersion, User hr) {
@@ -281,6 +375,12 @@ public class ApplicationService {
         return result;
     }
 
+    /**
+     * Checks whether HR may move an application directly between the supplied workflow states.
+     * @param currentStatus the current status
+     * @param targetStatus the target status
+     * @return {@code true} when the target is an allowed direct transition from the current state; otherwise {@code false}
+     */
     private boolean isAllowedHrTransition(ApplicationStatus currentStatus, ApplicationStatus targetStatus) {
         if (targetStatus == ApplicationStatus.REJECTED) {
             return currentStatus != ApplicationStatus.OFFER
@@ -296,6 +396,11 @@ public class ApplicationService {
         };
     }
 
+    /**
+     * Lists submitted home tasks assigned to the authenticated interviewer within their company.
+     * @param interviewer the authenticated interviewer
+     * @return the interviewer's assigned task submissions awaiting or containing review
+     */
     @Transactional(readOnly = true)
     public List<InterviewerSubmittedTaskDTO> getSubmittedTasksForInterviewer(User interviewer) {
         requireInterviewerWithCompany(interviewer);
@@ -304,6 +409,14 @@ public class ApplicationService {
                 .stream().map(InterviewerSubmittedTaskDTO::from).toList();
     }
 
+    /**
+     * Records the assigned interviewer's approval or rejection of a submitted home task using optimistic locking.
+     * @param applicationId the application identifier
+     * @param decision the decision
+     * @param expectedVersion the client-visible version used for optimistic locking
+     * @param interviewer the authenticated interviewer
+     * @return the reviewed task with its updated decision and application version
+     */
     @Transactional
     public InterviewerSubmittedTaskDTO reviewSubmittedTask(
             Long applicationId, TaskReviewDecision decision, Long expectedVersion, User interviewer) {
@@ -332,6 +445,14 @@ public class ApplicationService {
         return result;
     }
 
+    /**
+     * Replaces internal review notes on a submitted task assigned to the interviewer.
+     * @param applicationId the application identifier
+     * @param notes the internal notes text
+     * @param expectedVersion the client-visible version used for optimistic locking
+     * @param interviewer the authenticated interviewer
+     * @return the task submission containing the persisted review notes
+     */
     @Transactional
     public InterviewerSubmittedTaskDTO updateTaskReviewNotes(
             Long applicationId, String notes, Long expectedVersion, User interviewer) {
@@ -351,6 +472,12 @@ public class ApplicationService {
         return InterviewerSubmittedTaskDTO.from(applicationRepository.saveAndFlush(application));
     }
 
+    /**
+     * Lists a candidate's applications limited to jobs owned by the authenticated HR user's company.
+     * @param candidateId the candidate identifier
+     * @param hr the authenticated HR user defining company scope
+     * @return company-scoped staff views of the candidate's applications
+     */
     @Transactional(readOnly = true)
     public List<StaffApplicationResponseDTO> getApplicationsByCandidate(Long candidateId, User hr) {
         requireHrWithCompany(hr);
@@ -368,6 +495,11 @@ public class ApplicationService {
                 .toList();
     }
 
+    /**
+     * Lists every application owned by the supplied candidate.
+     * @param candidate the candidate being processed
+     * @return candidate-facing representations of the candidate's applications
+     */
     public List<ApplicationResponseDTO> getApplicationsForCandidate(User candidate) {
         requireCandidateRole(candidate);
         return applicationRepository.findByCandidateIdOrderByAppliedAtDesc(candidate.getId())
@@ -376,16 +508,36 @@ public class ApplicationService {
                 .toList();
     }
 
+    /**
+     * Loads a single application after verifying that it belongs to the supplied candidate.
+     * @param applicationId the application identifier
+     * @param candidate the candidate being processed
+     * @return the candidate-facing representation of the owned application
+     */
     public ApplicationResponseDTO getOwnedApplicationById(Long applicationId, User candidate) {
         return toResponseDTO(findOwnedApplication(applicationId, candidate));
     }
 
+    /**
+     * Loads the stored CV after verifying that the application belongs to the supplied candidate.
+     * @param applicationId the application identifier
+     * @param candidate the candidate being processed
+     * @return the CV resource together with its safe download filename
+     */
     public CvDownload getOwnedCv(Long applicationId, User candidate) {
         Application application = findOwnedApplication(applicationId, candidate);
         Resource resource = cvStorageService.load(application.getCvUrl());
         return new CvDownload("cv-application-" + applicationId + ".pdf", resource);
     }
 
+    /**
+     * Submits a GitHub repository for the candidate's assigned home task after validating ownership, stage, deadline, and version.
+     * @param applicationId the application identifier
+     * @param repositoryUrl the submitted GitHub repository URL
+     * @param expectedVersion the client-visible version used for optimistic locking
+     * @param candidate the candidate being processed
+     * @return the candidate-facing application containing the recorded submission
+     */
     public ApplicationResponseDTO submitTask(
             Long applicationId, String repositoryUrl, Long expectedVersion, User candidate) {
         Application application = findOwnedApplication(applicationId, candidate);
@@ -412,6 +564,12 @@ public class ApplicationService {
         return toResponseDTO(applicationRepository.saveAndFlush(application));
     }
 
+    /**
+     * Resolves an application only when it belongs to the supplied candidate.
+     * @param applicationId the application identifier
+     * @param candidate the candidate being processed
+     * @return the candidate-owned application
+     */
     private Application findOwnedApplication(Long applicationId, User candidate) {
         requireCandidateRole(candidate);
         Application application = applicationRepository.findById(applicationId)
@@ -423,18 +581,32 @@ public class ApplicationService {
         return application;
     }
 
+    /**
+     * Resolves an application only when its job belongs to the authenticated HR user's company.
+     * @param applicationId the application identifier
+     * @param hr the authenticated HR user defining company scope
+     * @return the application within the HR user's company
+     */
     private Application findHrCompanyApplication(Long applicationId, User hr) {
         requireHrWithCompany(hr);
         return applicationRepository.findByIdAndJobCompany(applicationId, hr.getCompany())
                 .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
     }
 
+    /**
+     * Requires the supplied user to have the candidate role.
+     * @param candidate the candidate being processed
+     */
     private void requireCandidateRole(User candidate) {
         if (candidate == null || candidate.getRole() != Role.CANDIDATE) {
             throw new AccessDeniedException("Candidate access is required");
         }
     }
 
+    /**
+     * Requires an HR user with an assigned company so company-scoped operations are safe.
+     * @param hr the authenticated HR user defining company scope
+     */
     private void requireHrWithCompany(User hr) {
         if (hr == null || hr.getRole() != Role.HR) {
             throw new AccessDeniedException("HR access is required");
@@ -444,6 +616,10 @@ public class ApplicationService {
         }
     }
 
+    /**
+     * Requires an interviewer with an assigned company so reviewer operations are company-scoped.
+     * @param interviewer the authenticated interviewer
+     */
     private void requireInterviewerWithCompany(User interviewer) {
         if (interviewer == null || interviewer.getRole() != Role.INTERVIEWER) {
             throw new AccessDeniedException("Interviewer access is required");
@@ -453,6 +629,10 @@ public class ApplicationService {
         }
     }
 
+    /**
+     * Removes a newly stored CV after persistence failure without masking the primary error.
+     * @param storageKey the opaque CV storage key
+     */
     private void deleteStoredCvAfterFailedApplication(String storageKey) {
         try {
             cvStorageService.delete(storageKey);
@@ -461,8 +641,18 @@ public class ApplicationService {
         }
     }
 
+    /**
+     * Couples a stored CV resource with the filename presented to the downloader.
+     * @param downloadFilename the download filename
+     * @param resource the resource
+     */
     public record CvDownload(String downloadFilename, Resource resource) {}
 
+    /**
+     * Requires an HTTPS GitHub repository URL and returns its normalized form.
+     * @param repositoryUrl the submitted GitHub repository URL
+     * @return the trimmed, validated GitHub repository URL
+     */
     private String validateRepositoryUrl(String repositoryUrl) {
         if (repositoryUrl == null || repositoryUrl.isBlank()) {
             throw new IllegalArgumentException("Repository URL is required");
@@ -493,6 +683,11 @@ public class ApplicationService {
         }
     }
 
+    /**
+     * Converts an application entity into its candidate-facing representation.
+     * @param application the application being processed
+     * @return a candidate-facing application DTO
+     */
     private ApplicationResponseDTO toResponseDTO(Application application) {
         var job = application.getJob();
         return new ApplicationResponseDTO(
@@ -515,6 +710,11 @@ public class ApplicationService {
         );
     }
 
+    /**
+     * Rejects a mutation when the client version is missing or differs from the persisted application version.
+     * @param application the application being processed
+     * @param expectedVersion the client-visible version used for optimistic locking
+     */
     private void requireExpectedVersion(Application application, Long expectedVersion) {
         if (expectedVersion == null) {
             throw new IllegalArgumentException("Application version is required");
@@ -524,6 +724,11 @@ public class ApplicationService {
         }
     }
 
+    /**
+     * Requires non-blank candidate feedback and returns its trimmed form.
+     * @param feedback the feedback text
+     * @return the validated, trimmed feedback
+     */
     private String normalizeCandidateFeedback(String feedback) {
         String normalized = feedback == null || feedback.isBlank() ? null : feedback.trim();
         if (normalized != null && normalized.length() > 10000) {
@@ -532,11 +737,20 @@ public class ApplicationService {
         return normalized;
     }
 
+    /**
+     * Publishes a candidate notification event after the surrounding transaction commits.
+     * @param application the application being processed
+     * @param type the requested domain type
+     */
     private void publish(Application application, NotificationType type) {
         notificationEventPublisher.publishAfterCommit(CandidateNotificationEvent.of(type,
                 application.getCandidate().getId(), application.getId(), null));
     }
 
+    /**
+     * Queues GitHub profile analysis after application persistence commits.
+     * @param application the application being processed
+     */
     private void requestGithubAnalysis(Application application) {
         User candidate = application.getCandidate();
         GithubProfileUrlParser.extractUsername(candidate.getGithubProfileUrl()).ifPresent(username -> {

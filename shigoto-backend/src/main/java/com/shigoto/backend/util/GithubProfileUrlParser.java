@@ -5,12 +5,23 @@ import java.net.URISyntaxException;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
+/**
+ * Parses supported GitHub profile URLs without retaining state.
+ */
 public final class GithubProfileUrlParser {
     private static final Pattern USERNAME_PATTERN = Pattern.compile(
             "[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*");
 
+    /**
+     * Prevents instantiation of this stateless URL utility.
+     */
     private GithubProfileUrlParser() {}
 
+    /**
+     * Extracts a valid single-segment GitHub username from an HTTP(S) profile URL.
+     * @param value the value to validate or normalize
+     * @return the GitHub username when the URL is a valid single-segment profile URL; otherwise empty
+     */
     public static Optional<String> extractUsername(String value) {
         if (value == null || value.isBlank()) return Optional.empty();
         try {

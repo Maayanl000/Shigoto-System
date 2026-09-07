@@ -15,99 +15,182 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 
 import java.time.LocalDateTime;
 
+/**
+ * Maps domain, validation, security, upload, and persistence failures to stable API error responses.
+ */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final String STALE_WRITE_MESSAGE =
             "This record was updated by another user. Refresh and try again.";
 
-    // הפונקציה הזו תופסת את כל שגיאות ה-ResourceNotFoundException במערכת
+    /**
+     * Converts missing-domain-resource failures into a 404 API response.
+     * @param ex the handled exception
+     * @return an HTTP response containing the standard error body and corresponding status
+     */
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponseDTO> handleResourceNotFound(ResourceNotFoundException ex) {
 
         ErrorResponseDTO errorResponse = new ErrorResponseDTO(
                 ex.getMessage(),
-                HttpStatus.NOT_FOUND.value(), // מחזיר 404
+                HttpStatus.NOT_FOUND.value(),
                 LocalDateTime.now()
         );
 
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorResponse);
     }
 
+    /**
+     * Converts validation and malformed-input failures into a 400 API response.
+     * @param ex the handled exception
+     * @return an HTTP response containing the standard error body and corresponding status
+     */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponseDTO> handleBadRequest(IllegalArgumentException ex) {
         return buildErrorResponse(ex.getMessage(), HttpStatus.BAD_REQUEST);
     }
 
+    /**
+     * Converts duplicate application attempts into a 409 API response.
+     * @param ex the handled exception
+     * @return an HTTP response containing the standard error body and corresponding status
+     */
     @ExceptionHandler(DuplicateApplicationException.class)
     public ResponseEntity<ErrorResponseDTO> handleConflict(DuplicateApplicationException ex) {
         return buildErrorResponse(ex.getMessage(), HttpStatus.CONFLICT);
     }
 
+    /**
+     * Converts duplicate account email failures into a 409 API response.
+     * @param ex the handled exception
+     * @return an HTTP response containing the standard error body and corresponding status
+     */
     @ExceptionHandler(DuplicateEmailException.class)
     public ResponseEntity<ErrorResponseDTO> handleDuplicateEmail(DuplicateEmailException ex) {
         return buildErrorResponse(ex.getMessage(), HttpStatus.CONFLICT);
     }
 
+    /**
+     * Converts stale JPA writes into a 409 response that instructs the client to refresh.
+     * @param ex the handled exception
+     * @return an HTTP response containing the standard error body and corresponding status
+     */
     @ExceptionHandler(OptimisticLockingFailureException.class)
     public ResponseEntity<ErrorResponseDTO> handleOptimisticLockingFailure(
             OptimisticLockingFailureException ex) {
         return buildErrorResponse(STALE_WRITE_MESSAGE, HttpStatus.CONFLICT);
     }
 
+    /**
+     * Converts interview scheduling collisions into a 409 API response.
+     * @param ex the handled exception
+     * @return an HTTP response containing the standard error body and corresponding status
+     */
     @ExceptionHandler(InterviewSlotConflictException.class)
     public ResponseEntity<ErrorResponseDTO> handleInterviewSlotConflict(
             InterviewSlotConflictException ex) {
         return buildErrorResponse(ex.getMessage(), HttpStatus.CONFLICT);
     }
 
+    /**
+     * Converts prohibited application deletion into a 409 API response.
+     * @param ex the handled exception
+     * @return an HTTP response containing the standard error body and corresponding status
+     */
     @ExceptionHandler(ApplicationDeleteConflictException.class)
     public ResponseEntity<ErrorResponseDTO> handleApplicationDeleteConflict(
             ApplicationDeleteConflictException ex) {
         return buildErrorResponse(ex.getMessage(), HttpStatus.CONFLICT);
     }
 
+    /**
+     * Converts remaining database constraint violations into a 409 API response.
+     * @param ex the handled exception
+     * @return an HTTP response containing the standard error body and corresponding status
+     */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponseDTO> handleDataIntegrityViolation(
             DataIntegrityViolationException ex) {
         return buildErrorResponse("Request violates a data constraint", HttpStatus.BAD_REQUEST);
     }
 
+    /**
+     * Converts failed authentication into a 401 API response.
+     * @param ex the handled exception
+     * @return an HTTP response containing the standard error body and corresponding status
+     */
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ErrorResponseDTO> handleAuthentication(AuthenticationException ex) {
         return buildErrorResponse("Invalid email or password", HttpStatus.UNAUTHORIZED);
     }
 
+    /**
+     * Converts authorization failures into a 403 API response.
+     * @param ex the handled exception
+     * @return an HTTP response containing the standard error body and corresponding status
+     */
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ErrorResponseDTO> handleAccessDenied(AccessDeniedException ex) {
         return buildErrorResponse("Access denied", HttpStatus.FORBIDDEN);
     }
 
+    /**
+     * Converts servlet-level oversized uploads into a 413 API response.
+     * @param ex the handled exception
+     * @return an HTTP response containing the standard error body and corresponding status
+     */
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ErrorResponseDTO> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
         return buildErrorResponse("CV file must not exceed 5 MB", HttpStatus.PAYLOAD_TOO_LARGE);
     }
 
+    /**
+     * Converts domain-level CV size violations into a 413 API response.
+     * @param ex the handled exception
+     * @return an HTTP response containing the standard error body and corresponding status
+     */
     @ExceptionHandler(CvTooLargeException.class)
     public ResponseEntity<ErrorResponseDTO> handleCvTooLarge(CvTooLargeException ex) {
         return buildErrorResponse("CV file must not exceed 5 MB", HttpStatus.PAYLOAD_TOO_LARGE);
     }
 
+    /**
+     * Converts missing CV multipart data into a 400 API response.
+     * @param ex the handled exception
+     * @return an HTTP response containing the standard error body and corresponding status
+     */
     @ExceptionHandler(MissingServletRequestPartException.class)
     public ResponseEntity<ErrorResponseDTO> handleMissingMultipartPart(MissingServletRequestPartException ex) {
         return buildErrorResponse("CV file is required", HttpStatus.BAD_REQUEST);
     }
 
+    /**
+     * Converts malformed multipart requests into a 400 API response.
+     * @param ex the handled exception
+     * @return an HTTP response containing the standard error body and corresponding status
+     */
     @ExceptionHandler(MultipartException.class)
     public ResponseEntity<ErrorResponseDTO> handleMultipart(MultipartException ex) {
         return buildErrorResponse("The multipart upload request is invalid", HttpStatus.BAD_REQUEST);
     }
 
+    /**
+     * Converts CV filesystem failures into a 500 API response without exposing internals.
+     * @param ex the handled exception
+     * @return an HTTP response containing the standard error body and corresponding status
+     */
     @ExceptionHandler(CvStorageException.class)
     public ResponseEntity<ErrorResponseDTO> handleCvStorage(CvStorageException ex) {
         return buildErrorResponse("CV storage operation failed", HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
+    /**
+     * Builds the shared timestamped error payload with the requested HTTP status.
+     * @param message the exception or response message
+     * @param status the requested domain status
+     * @return an HTTP response containing the standard error body and requested status
+     */
     private ResponseEntity<ErrorResponseDTO> buildErrorResponse(String message, HttpStatus status) {
         ErrorResponseDTO errorResponse = new ErrorResponseDTO(
                 message,
@@ -117,5 +200,4 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status).body(errorResponse);
     }
 
-    // אפשר להוסיף כאן בעתיד עוד פונקציות שיתפסו שגיאות אחרות!
 }

@@ -8,8 +8,14 @@ import CalendarMonthOutlinedIcon from '@mui/icons-material/CalendarMonthOutlined
 import NotesOutlinedIcon from '@mui/icons-material/NotesOutlined';
 import ActionDialog from './ActionDialog';
 
+/**
+ * Renders the candidate drawer interface and coordinates its user interactions.
+ */
 export default function CandidateDrawer({ candidate, open, onClose }) {
   const [action, setAction] = useState(null);
+  /**
+   * Updates navigation or dialog state for close action.
+   */
   const closeAction = () => setAction(null);
 
   return (

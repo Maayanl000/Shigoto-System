@@ -4,6 +4,9 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
 
+/**
+ * Persists interview state and its domain relationships.
+ */
 @Entity
 @Table(name = "interviews")
 @Data
@@ -20,12 +23,11 @@ public class Interview {
     @Column(nullable = false)
     private Long version;
 
-    // לאיזו מועמדות שייך הראיון הזה?
+    // Each interview belongs to one application and one company-scoped interviewer.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "application_id", nullable = false)
     private Application application;
 
-    // מי איש הצוות שמעביר את הראיון?
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "interviewer_id", nullable = false)
     private User interviewer;
@@ -36,7 +38,7 @@ public class Interview {
     private String meetingLink;
 
     @Column(columnDefinition = "TEXT")
-    private String feedback; // כאן המראיין יכתוב את חוות הדעת שלו
+    private String feedback; // Submitted interviewer feedback used to complete the interview.
 
     @Column(columnDefinition = "TEXT")
     private String interviewerNotes;

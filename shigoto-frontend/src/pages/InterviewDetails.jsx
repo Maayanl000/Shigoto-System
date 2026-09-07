@@ -5,6 +5,9 @@ import RateReviewOutlinedIcon from '@mui/icons-material/RateReviewOutlined';
 import PageSkeleton from '../components/PageSkeleton';
 import FeedbackDialog from '../components/FeedbackDialog';
 
+/**
+ * Renders the interview details interface and coordinates its user interactions.
+ */
 export default function InterviewDetails() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 

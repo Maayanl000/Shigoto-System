@@ -8,10 +8,16 @@ const footerLinks = [
   { label: 'Register', to: '/register' },
 ];
 
+/**
+ * Renders the public footer interface and coordinates its user interactions.
+ */
 export default function PublicFooter() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  /**
+   * Updates navigation or dialog state for go home.
+   */
   const goHome = () => {
     if (location.pathname === '/' && !location.hash) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -19,6 +25,9 @@ export default function PublicFooter() {
     }
     navigate('/');
   };
+  /**
+   * Updates navigation or dialog state for go jobs.
+   */
   const goJobs = () => {
     if (location.pathname === '/') {
       if (location.hash !== '#jobs') navigate('/#jobs');

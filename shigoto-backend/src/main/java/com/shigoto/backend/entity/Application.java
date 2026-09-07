@@ -12,6 +12,9 @@ import java.time.LocalDateTime;
                 columnNames = {"candidate_id", "job_id"}
         )
 )
+/**
+ * Persists application state and its domain relationships.
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -26,12 +29,11 @@ public class Application {
     @Column(nullable = false)
     private Long version;
 
-    // ה"גשר" הראשון - הקישור ללקוח (המועמד)
+    // The candidate and job links define ownership and company scope for this application.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "candidate_id", nullable = false)
     private User candidate;
 
-    // ה"גשר" השני - הקישור למנה (המשרה)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "job_id", nullable = false)
     private Job job;
@@ -44,17 +46,17 @@ public class Application {
     private String cvUrl;
 
     @Column(columnDefinition = "TEXT")
-    private String coverLetter; // מכתב מקדים
+    private String coverLetter; // Candidate-provided cover letter.
 
     @Column(columnDefinition = "TEXT")
-    private String hrNotes; // הערות מנהלת הגיוס
+    private String hrNotes; // Internal HR notes, never candidate-facing.
 
-    private LocalDateTime taskDeadline; // תאריך יעד למבחן בית
+    private LocalDateTime taskDeadline; // Deadline for the assigned home task.
 
     @Column(columnDefinition = "TEXT")
     private String taskInstructions;
 
-    private String taskRepoUrl; // קישור לגיטהאב של הפתרון
+    private String taskRepoUrl; // GitHub repository submitted as the task solution.
 
     @Column(columnDefinition = "TEXT")
     private String taskReviewNotes;
@@ -71,6 +73,9 @@ public class Application {
 
     private LocalDateTime statusChangedAt;
 
+    /**
+     * Initializes persistence defaults immediately before the entity is first stored.
+     */
     @PrePersist
     protected void onCreate() {
         LocalDateTime createdAt = LocalDateTime.now();
@@ -81,10 +86,14 @@ public class Application {
             this.statusChangedAt = this.appliedAt;
         }
         if (this.status == null) {
-            this.status = ApplicationStatus.APPLIED; // סטטוס ברירת מחדל
+            this.status = ApplicationStatus.APPLIED; // New applications begin at the submitted stage.
         }
     }
 
+    /**
+     * Moves the application to the requested workflow status and records the transition time.
+     * @param newStatus the new status
+     */
     public void transitionTo(ApplicationStatus newStatus) {
         if (newStatus == null) {
             throw new IllegalArgumentException("Application status is required");

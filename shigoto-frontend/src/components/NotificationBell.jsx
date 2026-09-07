@@ -4,15 +4,24 @@ import { Badge, Box, CircularProgress, Divider, IconButton, List, ListItemButton
 import NotificationsNoneRoundedIcon from '@mui/icons-material/NotificationsNoneRounded';
 import api from '../services/api';
 
+/**
+ * Formats an API date for display, with a safe fallback for absent values.
+ */
 const formatDate = (value) => value ? new Intl.DateTimeFormat(undefined,
   { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '';
 
+/**
+ * Renders the notification bell interface and coordinates its user interactions.
+ */
 export default function NotificationBell() {
   const navigate = useNavigate();
   const [anchor, setAnchor] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  /**
+   * Loads load from the API and synchronizes page state.
+   */
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -30,6 +39,9 @@ export default function NotificationBell() {
     };
   }, [load]);
 
+  /**
+   * Updates navigation or dialog state for open notification.
+   */
   const openNotification = async (notification) => {
     if (!notification.read) {
       await api.put(`/notifications/${notification.notificationId}/read`);

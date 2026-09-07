@@ -13,6 +13,9 @@ import api from '../services/api';
 import professionalNetworkImage from '../assets/ChatGPT Image Aug 22, 2026, 05_35_31 PM.png';
 import { useAuth } from '../auth/authContext';
 
+/**
+ * Renders the home interface and coordinates its user interactions.
+ */
 export default function Home() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -50,6 +53,9 @@ export default function Home() {
   }, [jobs, searchQuery, selectedLocation]);
   const filtersActive = Boolean(searchQuery.trim() || selectedLocation);
 
+  /**
+   * Opens the application flow for authenticated candidates or redirects guests to sign in.
+   */
   const handleApply = () => {
     if (!user) {
       setSelectedJob(null);
@@ -71,6 +77,7 @@ export default function Home() {
     setApplyMessage('');
   };
 
+  // Load the signed-in candidate's applications for job application status.
   useEffect(() => {
     if (authLoading || user?.role !== 'CANDIDATE') return;
 
@@ -86,7 +93,7 @@ export default function Home() {
     return () => { active = false; };
   }, [authLoading, user]);
 
-  // שליפת המשרות מהשרת בעת טעינת העמוד
+  // Load public jobs when the page opens.
   useEffect(() => {
     api.get('/jobs')
       .then((response) => {
@@ -95,7 +102,7 @@ export default function Home() {
       })
       .catch((error) => {
         console.error('Error fetching jobs:', error);
-        // נתוני גיבוי (Fallback) למקרה ששרת ה-Java כרגע כבוי
+        // Keep the public landing page useful when the backend is unavailable.
         setJobs([
           { id: 1, title: 'Full Stack Java Developer', companyName: 'Shigoto', department: 'R&D', location: 'Tel Aviv', type: 'Full-time', isFallback: true },
           { id: 2, title: 'Backend Engineer (Spring Boot)', companyName: 'Shigoto', department: 'Engineering', location: 'Hybrid', type: 'Full-time', isFallback: true },
@@ -131,8 +138,6 @@ export default function Home() {
                 <Box><Typography variant="h5" fontWeight={800}>{loading ? '—' : jobs.length}</Typography><Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.62)' }}>Open roles</Typography></Box>
                 <Divider orientation="vertical" flexItem sx={{ borderColor: 'rgba(255,255,255,0.2)' }} />
                 <Box><Typography variant="h5" fontWeight={800}>3</Typography><Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.62)' }}>Recruitment workspaces</Typography></Box>
-                <Divider orientation="vertical" flexItem sx={{ borderColor: 'rgba(255,255,255,0.2)' }} />
-                <Box><Typography variant="h5" fontWeight={800}>1</Typography><Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.62)' }}>Shared workflow</Typography></Box>
               </Stack>
             </Grid>
           </Grid>
@@ -146,13 +151,12 @@ export default function Home() {
       <Container id="how-it-works" maxWidth="xl" sx={{ py: { xs: 6, md: 8 } }}>
         <Grid container spacing={2}>
           {[
-            ['01', 'Discover', 'Explore current technology opportunities and understand what each role needs.'],
-            ['02', 'Progress', 'Follow application stages, assigned tasks, and interview information in one place.'],
-            ['03', 'Collaborate', 'Give HR teams and technical interviewers clear, focused review spaces.'],
-          ].map(([number, title, text]) => (
-            <Grid key={number} size={{ xs: 12, md: 4 }}>
+            ['Discover', 'Explore current technology opportunities and understand what each role needs.'],
+            ['Progress', 'Follow application stages, assigned tasks, and interview information in one place.'],
+            ['Collaborate', 'Give HR teams and technical interviewers clear, focused review spaces.'],
+          ].map(([title, text]) => (
+            <Grid key={title} size={{ xs: 12, md: 4 }}>
               <Box sx={{ display: 'flex', gap: 2, py: 2 }}>
-                <Typography color="secondary.dark" fontWeight={900}>{number}</Typography>
                 <Box><Typography variant="h6">{title}</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: 1, lineHeight: 1.7 }}>{text}</Typography></Box>
               </Box>
             </Grid>
@@ -166,10 +170,8 @@ export default function Home() {
         <Container maxWidth="xl">
           <Box sx={{ display: { md: 'flex' }, alignItems: 'flex-end', justifyContent: 'space-between', gap: 3, mb: 4 }}>
             <Box>
-              <Typography variant="overline" color="secondary.dark" fontWeight={800}>Open opportunities</Typography>
               <Typography variant="h3" component="h2" sx={{ mt: 0.75, fontSize: { xs: '2rem', md: '2.6rem' }, fontWeight: 800 }}>Find your place at Shigoto</Typography>
-              <Typography color="text.secondary" sx={{ mt: 1.5, maxWidth: 620 }}>Browse the roles currently returned by the existing Shigoto jobs service.</Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>The existing local fallback listings may appear when the service is unavailable.</Typography>
+              <Typography color="text.secondary" sx={{ mt: 1.5, maxWidth: 620 }}>Browse open technology roles and find your next opportunity.</Typography>
             </Box>
             {!loading && <Chip label={`${jobs.length} roles available`} color="secondary" variant="outlined" sx={{ mt: { xs: 2, md: 0 }, bgcolor: 'secondary.light' }} />}
           </Box>

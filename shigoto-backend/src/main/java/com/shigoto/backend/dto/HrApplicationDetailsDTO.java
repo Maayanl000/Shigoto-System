@@ -6,6 +6,9 @@ import com.shigoto.backend.entity.EmploymentType;
 
 import java.time.LocalDateTime;
 
+/**
+ * Represents the complete company-scoped application view used by HR.
+ */
 public record HrApplicationDetailsDTO(
         Long applicationId,
         ApplicationStatus status,
@@ -35,6 +38,11 @@ public record HrApplicationDetailsDTO(
         GithubAnalysisDTO githubAnalysis,
         Long version
 ) {
+    /**
+     * Maps the supplied domain entity into this API response representation.
+     * @param application the application being processed
+     * @return a DTO populated from the supplied domain entity
+     */
     public static HrApplicationDetailsDTO from(Application application) {
         var candidate = application.getCandidate();
         var job = application.getJob();

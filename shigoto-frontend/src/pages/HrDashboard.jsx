@@ -16,6 +16,9 @@ const columnDefinitions = [
 
 const SELECT_JOB_PLACEHOLDER = '__select_job__';
 
+/**
+ * Formats an application date for compact display on a Kanban card.
+ */
 function formatKanbanDate(value) {
   if (!value) return 'Date unavailable';
   const date = new Date(value);
@@ -23,11 +26,17 @@ function formatKanbanDate(value) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(date);
 }
 
+/**
+ * Formats a workflow timestamp for the HR dashboard, with a fallback when absent.
+ */
 function formatKanbanTimestamp(application) {
   const presentation = getKanbanDatePresentation(application);
   return `${presentation.label} ${formatKanbanDate(presentation.date)}`;
 }
 
+/**
+ * Renders the hr dashboard interface and coordinates its user interactions.
+ */
 export default function HrDashboard() {
   const navigate = useNavigate();
   const [applications, setApplications] = useState([]);
@@ -37,6 +46,9 @@ export default function HrDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  /**
+   * Loads pipeline from the API and synchronizes page state.
+   */
   const loadPipeline = useCallback(async (jobId = '') => {
     setLoading(true);
     setError('');
@@ -90,6 +102,9 @@ export default function HrDashboard() {
   const hasJobFilter = Boolean(activeJobId);
   const selectedJob = jobs.find((job) => String(job.id) === String(activeJobId));
 
+  /**
+   * Changes the active job filter and synchronizes it with the URL query string.
+   */
   const changeJob = (event) => {
     const jobId = event.target.value;
     setSelectedJobId(jobId);

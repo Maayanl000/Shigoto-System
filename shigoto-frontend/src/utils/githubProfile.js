@@ -1,3 +1,6 @@
+/**
+ * Checks whether a value is a valid GitHub profile URL accepted by the backend.
+ */
 export function isValidGithubProfile(value) {
   try {
     const url = new URL(value.trim());

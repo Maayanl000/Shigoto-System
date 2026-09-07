@@ -25,11 +25,20 @@
 .env.*
 !.env.example
 
+shigoto-env.ps1
+
 **/application-local.properties
 **/application-secrets.properties
 
 # Local runtime uploads
 **/data/
+!shigoto-backend/data/
+shigoto-backend/data/*
+!shigoto-backend/data/cvs/
+shigoto-backend/data/cvs/*
+!shigoto-backend/data/cvs/demo-eren-yeager-cv.pdf
+!shigoto-backend/data/cvs/demo-mikasa-ackerman-cv.pdf
+!shigoto-backend/data/cvs/demo-armin-arlert-cv.pdf
 
 # ===============================
 # Logs

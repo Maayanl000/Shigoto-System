@@ -17,10 +17,16 @@ const activeStatuses = new Set([
 ]);
 const pastStatuses = new Set(['HIRED', 'REJECTED']);
 
+/**
+ * Loads candidate applications, interviews, and notifications concurrently.
+ */
 function fetchCandidateDashboard() {
   return Promise.all([api.get('/applications/mine'), api.get('/interviews/mine'), api.get('/notifications/mine')]);
 }
 
+/**
+ * Formats an API date for display, with a safe fallback for absent values.
+ */
 function formatDate(value, includeTime = false) {
   if (!value) return includeTime ? 'Date and time unavailable' : 'Date unavailable';
   const date = new Date(value);
@@ -30,6 +36,9 @@ function formatDate(value, includeTime = false) {
     : { dateStyle: 'medium' }).format(date);
 }
 
+/**
+ * Renders the empty state interface and coordinates its user interactions.
+ */
 function EmptyState({ title, description }) {
   return (
     <Card variant="outlined">
@@ -41,6 +50,9 @@ function EmptyState({ title, description }) {
   );
 }
 
+/**
+ * Renders the application card interface and coordinates its user interactions.
+ */
 function ApplicationCard({ application, actionRequired = false }) {
   const status = getApplicationStatusDisplay(application.status);
   return (
@@ -80,6 +92,9 @@ function ApplicationCard({ application, actionRequired = false }) {
   );
 }
 
+/**
+ * Renders the interview card interface and coordinates its user interactions.
+ */
 function InterviewCard({ interview, upcoming = false }) {
   return (
     <Card sx={upcoming ? { borderLeft: 4, borderLeftColor: 'success.main', bgcolor: 'action.hover' } : undefined}>
@@ -112,6 +127,9 @@ function InterviewCard({ interview, upcoming = false }) {
   );
 }
 
+/**
+ * Renders the candidate dashboard interface and coordinates its user interactions.
+ */
 export default function CandidateDashboard() {
   const [applications, setApplications] = useState([]);
   const [interviews, setInterviews] = useState([]);
@@ -121,6 +139,9 @@ export default function CandidateDashboard() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
+  /**
+   * Loads dashboard from the API and synchronizes page state.
+   */
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     setLoadError('');
@@ -168,6 +189,9 @@ export default function CandidateDashboard() {
   const interviewHistory = useMemo(() => interviews.filter((item) => ['COMPLETED', 'CANCELED'].includes(item.status)), [interviews]);
   const unreadCount = notifications.filter((item) => !item.read).length;
 
+  /**
+   * Opens the selected application update and marks its related notification as read when possible.
+   */
   const openUpdate = async (notification) => {
     if (!notification.read) {
       await api.put(`/notifications/${notification.notificationId}/read`);

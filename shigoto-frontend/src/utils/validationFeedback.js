@@ -1,3 +1,6 @@
+/**
+ * Maps registration API failures to actionable user-facing feedback.
+ */
 export function registrationErrorMessage(error) {
   if (error.response?.status === 409) return 'An account with this email already exists.';
   if (error.response?.status === 400 && typeof error.response?.data?.message === 'string') {
@@ -6,6 +9,9 @@ export function registrationErrorMessage(error) {
   return 'We could not create your account. Please try again.';
 }
 
+/**
+ * Maps job persistence failures to actionable user-facing feedback.
+ */
 export function jobSaveErrorMessage(error) {
   if (error.response?.status === 409) {
     return 'This job was updated by another user. The job list was refreshed; close this dialog, reopen the job, and try again.';
@@ -13,6 +19,9 @@ export function jobSaveErrorMessage(error) {
   return error.response?.data?.message || 'Could not save the job.';
 }
 
+/**
+ * Returns the first scheduling validation error, including future-time requirements.
+ */
 export function interviewValidationMessage({ editing, type, interviewerId, interviewTime, meetingLink }, now = new Date()) {
   if (!editing && !type) return 'Choose an interview type.';
   if (!interviewerId) return 'Choose an interviewer.';
@@ -30,6 +39,9 @@ export function interviewValidationMessage({ editing, type, interviewerId, inter
   return '';
 }
 
+/**
+ * Returns the first home-task assignment validation error.
+ */
 export function homeTaskValidationMessage({ instructions, reviewerId, deadline }, now = new Date()) {
   if (!instructions.trim()) return 'Enter task instructions before sending the home task.';
   if (!reviewerId) return 'Choose the interviewer who will review this home task.';

@@ -12,6 +12,9 @@ const statusDisplay = {
   REJECTED: { label: 'Rejected', progressStage: 5, color: 'error' },
 };
 
+/**
+ * Maps an application status to its user-facing label and color.
+ */
 export function getApplicationStatusDisplay(status) {
   return statusDisplay[status] || { label: status || 'Unknown status', progressStage: 1, color: 'default' };
 }

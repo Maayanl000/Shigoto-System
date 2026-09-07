@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Alert, Box, Button, Card, CardContent, Chip, Divider, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Divider, Stack, TextField, Typography } from '@mui/material';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { useAuth } from '../auth/authContext';
 
 const roleHomes = { CANDIDATE: '/candidate', HR: '/hr', INTERVIEWER: '/interviewer' };
 
+/**
+ * Renders the login interface and coordinates its user interactions.
+ */
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -16,6 +19,9 @@ export default function Login() {
   const [error, setError] = useState('');
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
+  /**
+   * Authenticates the submitted credentials and redirects the user to the appropriate workspace.
+   */
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
@@ -54,7 +60,6 @@ export default function Login() {
         <CardContent component="form" noValidate onSubmit={handleSubmit} sx={{ display: 'grid', gap: 2.25 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center">
             <Typography variant="h6">Account credentials</Typography>
-            <Chip label="Secure session" size="small" variant="outlined" />
           </Stack>
           {error && <Alert severity="error">{error}</Alert>}
           <TextField label="Email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required disabled={submitting} fullWidth />

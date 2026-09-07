@@ -15,10 +15,16 @@ const activeStatuses = new Set([
   'TECH_INTERVIEW_SCHEDULED', 'OFFER',
 ]);
 
+/**
+ * Derives is active kanban status without mutating application state.
+ */
 export function isActiveKanbanStatus(status) {
   return activeStatuses.has(status);
 }
 
+/**
+ * Derives get history group without mutating application state.
+ */
 export function getHistoryGroup(status) {
   if (status === 'HIRED') return 'hired';
   if (status === 'REJECTED') return 'rejected';
@@ -31,6 +37,9 @@ const interviewLabels = {
   MANAGER: 'Manager interview scheduled',
 };
 
+/**
+ * Builds the visible Kanban status, including the active interview type.
+ */
 export function getKanbanStatusLabel(application) {
   if (application.status === 'TECH_INTERVIEW_SCHEDULED' && application.activeInterviewType) {
     return interviewLabels[application.activeInterviewType] || statusLabels[application.status];
@@ -38,6 +47,9 @@ export function getKanbanStatusLabel(application) {
   return statusLabels[application.status] || application.status;
 }
 
+/**
+ * Selects the workflow-relevant date label and value for a Kanban card.
+ */
 export function getKanbanDatePresentation(application) {
   if (application.statusChangedAt) {
     return { label: 'Status changed', date: application.statusChangedAt };

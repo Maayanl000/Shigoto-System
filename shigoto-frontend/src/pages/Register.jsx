@@ -6,6 +6,9 @@ import { useAuth } from '../auth/authContext';
 import { isValidGithubProfile } from '../utils/githubProfile';
 import { registrationErrorMessage } from '../utils/validationFeedback';
 
+/**
+ * Renders the register interface and coordinates its user interactions.
+ */
 export default function Register() {
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -14,11 +17,17 @@ export default function Register() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  /**
+   * Updates a registration field and clears its existing validation error.
+   */
   const handleChange = (field) => (event) => {
     setValues((current) => ({ ...current, [field]: event.target.value }));
     setError('');
   };
 
+  /**
+   * Validates registration details, creates the candidate account, and starts its session.
+   */
   const handleSubmit = async (event) => {
     event.preventDefault();
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim());

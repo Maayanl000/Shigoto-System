@@ -4,16 +4,23 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+/**
+ * Configures cors behavior for the application.
+ */
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
 
+    /**
+     * Defines the browser origins, methods, headers, and credential policy permitted for API requests.
+     * @param registry the MVC CORS registry
+     */
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**") // מאפשר גישה לכל נקודות הקצה שמתחילות ב-/api/
-                //שתי הכוכביות (**) הן Wildcard שאומר "כל מה שבא אחר כך". כך זה יתפוס נתיבים כמו /api/applications או /api/users.
-                .allowedOrigins("http://localhost:3000", "http://localhost:5173") // כתובות ה-React השכיחות (Vite לרוב משתמש ב-5173)
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS") // הפעולות המותרות
-                .allowedHeaders("*") // מאפשר את כל ה-Headers
-                .allowCredentials(true); // מאפשר העברת Cookies (חשוב לעתיד אם נוסיף התחברות)
+        // Permit the local React development origins to call every API route with session cookies.
+        registry.addMapping("/api/**")
+                .allowedOrigins("http://localhost:3000", "http://localhost:5173")
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                .allowedHeaders("*")
+                .allowCredentials(true);
     }
 }

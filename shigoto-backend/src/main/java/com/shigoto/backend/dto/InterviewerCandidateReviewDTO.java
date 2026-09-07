@@ -5,6 +5,9 @@ import com.shigoto.backend.entity.ApplicationStatus;
 
 import java.time.LocalDateTime;
 
+/**
+ * Represents candidate, application, task, and GitHub context used during interviewer review.
+ */
 public record InterviewerCandidateReviewDTO(
         Long applicationId, String candidateName, String email,
         String currentTitle, String desiredRole, String githubProfileUrl,
@@ -12,6 +15,11 @@ public record InterviewerCandidateReviewDTO(
         String taskInstructions, LocalDateTime taskDeadline, String taskRepoUrl,
         String taskReviewNotes, GithubAnalysisDTO githubAnalysis, Long version
 ) {
+    /**
+     * Maps the supplied domain entity into this API response representation.
+     * @param application the application being processed
+     * @return a DTO populated from the supplied domain entity
+     */
     public static InterviewerCandidateReviewDTO from(Application application) {
         var candidate = application.getCandidate();
         var job = application.getJob();

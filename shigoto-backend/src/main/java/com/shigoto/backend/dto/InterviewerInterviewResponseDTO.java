@@ -6,6 +6,9 @@ import com.shigoto.backend.entity.InterviewType;
 
 import java.time.LocalDateTime;
 
+/**
+ * Represents an assigned interview and its review state for an interviewer.
+ */
 public record InterviewerInterviewResponseDTO(
         Long interviewId,
         Long applicationId,
@@ -20,6 +23,11 @@ public record InterviewerInterviewResponseDTO(
         String interviewerNotes,
         Long version
 ) {
+    /**
+     * Maps the supplied domain entity into this API response representation.
+     * @param interview the interview being processed
+     * @return a DTO populated from the supplied domain entity
+     */
     public static InterviewerInterviewResponseDTO from(Interview interview) {
         var application = interview.getApplication();
         var candidate = application.getCandidate();

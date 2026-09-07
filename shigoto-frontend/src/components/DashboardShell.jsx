@@ -46,12 +46,18 @@ const areaConfig = {
   },
 };
 
+/**
+ * Derives get area without mutating application state.
+ */
 function getArea(pathname) {
   if (pathname.startsWith('/hr')) return 'hr';
   if (pathname.startsWith('/interviewer')) return 'interviewer';
   return 'candidate';
 }
 
+/**
+ * Renders the dashboard shell interface and coordinates its user interactions.
+ */
 export default function DashboardShell({ children }) {
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -63,10 +69,16 @@ export default function DashboardShell({ children }) {
   const userInitials = `${user?.firstName?.[0] || ''}${user?.lastName?.[0] || ''}`.toUpperCase() || config.initials;
   const staffCompany = ['HR', 'INTERVIEWER'].includes(user?.role) ? user?.companyName : null;
 
+  /**
+   * Ends the current session while preventing duplicate logout requests.
+   */
   const handleLogout = async () => {
     await logout();
   };
 
+  /**
+   * Builds the shared navigation content rendered in both mobile and desktop drawers.
+   */
   const drawerContent = (isCollapsed) => {
     const labelSx = {
       opacity: isCollapsed ? 0 : 1,

@@ -9,6 +9,9 @@ const stages = [
   { label: 'Interview', value: '4', color: '#087f8c' },
 ];
 
+/**
+ * Renders the recruitment visual interface and coordinates its user interactions.
+ */
 export default function RecruitmentVisual() {
   return (
     <Box aria-label="Recruitment workflow illustration" sx={{ position: 'relative', minHeight: { xs: 390, md: 440 }, display: 'grid', placeItems: 'center' }}>

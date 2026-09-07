@@ -1,13 +1,16 @@
 package com.shigoto.backend.entity;
 
+/**
+ * Defines the supported application status domain values.
+ */
 public enum ApplicationStatus {
-    APPLIED,                    // מועמדות הוגשה (ברירת מחדל)
-    HR_INTERVIEW,               // שיחת טלפון/זום עם מגייסת
-    TASK_SENT,                  // נשלח מבחן בית למועמד
-    TASK_SUBMITTED,             // המועמד הגיש את המבחן (מפעיל JMS למראיין)
-    TASK_APPROVED,              // המראיין אישר את המבחן (מפעיל JMS ל-HR)
-    TECH_INTERVIEW_SCHEDULED,   // נקבע ראיון טכני מול המראיין
-    OFFER,                      // הצעת עבודה
+    APPLIED,                    // Initial state after submission.
+    HR_INTERVIEW,               // HR screening is in progress.
+    TASK_SENT,                  // A home task has been assigned.
+    TASK_SUBMITTED,             // Submission triggers interviewer notification.
+    TASK_APPROVED,              // Approval triggers HR notification.
+    TECH_INTERVIEW_SCHEDULED,   // A technical interview has been scheduled.
+    OFFER,                      // The application reached an offer.
     HIRED,                      // candidate was hired
-    REJECTED                    // מועמדות נדחתה
+    REJECTED                    // The application was rejected.
 }

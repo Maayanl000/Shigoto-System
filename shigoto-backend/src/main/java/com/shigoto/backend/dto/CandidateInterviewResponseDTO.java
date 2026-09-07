@@ -5,6 +5,9 @@ import com.shigoto.backend.entity.InterviewType;
 
 import java.time.LocalDateTime;
 
+/**
+ * Represents interview scheduling information visible to a candidate.
+ */
 public record CandidateInterviewResponseDTO(
         Long id,
         Long applicationId,

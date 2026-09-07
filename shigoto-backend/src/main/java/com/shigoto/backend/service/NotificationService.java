@@ -16,6 +16,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Consumes candidate events, persists idempotent notifications, and exposes candidate-owned notification state.
+ * Required collaborators are supplied through Lombok-generated constructor injection.
+ */
 @Service @RequiredArgsConstructor @Slf4j
 public class NotificationService {
     private final NotificationRepository notificationRepository;
@@ -24,15 +28,21 @@ public class NotificationService {
     private final InterviewRepository interviewRepository;
     private final NotificationWriter notificationWriter;
 
+    /**
+     * Consumes an asynchronous event, validates its references, and performs the configured downstream work.
+     * @param event the domain event to process
+     */
     @JmsListener(destination = "shigoto.notifications")
     @Transactional
     public void receive(CandidateNotificationEvent event) {
+        // Enforce event shape and idempotency before resolving referenced entities.
         if (event == null || event.eventId() == null || event.type() == null
                 || event.candidateUserId() == null || event.applicationId() == null) {
             log.warn("Ignoring malformed candidate notification event");
             return;
         }
         if (notificationRepository.existsByEventId(event.eventId())) return;
+        // Verify ownership across candidate, application, and optional interview references.
         User candidate = userRepository.findById(event.candidateUserId()).orElse(null);
         Application application = applicationRepository.findById(event.applicationId()).orElse(null);
         if (candidate == null || candidate.getRole() != Role.CANDIDATE || application == null
@@ -78,6 +88,7 @@ public class NotificationService {
             case INTERVIEW_RESCHEDULED -> "Your interview for " + jobTitle + " was rescheduled.";
             case INTERVIEW_CANCELED -> "Your interview for " + jobTitle + " was canceled.";
         };
+        // Persist in a new transaction so duplicate races do not poison message consumption.
         try {
             notificationWriter.save(Notification.builder().eventId(event.eventId()).recipient(candidate)
                     .type(event.type()).title(title).message(limit(message, 500)).applicationId(application.getId())
@@ -87,6 +98,11 @@ public class NotificationService {
         }
     }
 
+    /**
+     * Lists notifications belonging to the supplied candidate, newest first.
+     * @param candidate the candidate being processed
+     * @return notifications owned by the candidate, newest first
+     */
     @Transactional(readOnly = true)
     public List<NotificationResponseDTO> mine(User candidate) {
         requireCandidate(candidate);
@@ -94,6 +110,12 @@ public class NotificationService {
                 .stream().map(NotificationResponseDTO::from).toList();
     }
 
+    /**
+     * Marks a candidate-owned notification as read, preserving its original read time on repeated calls.
+     * @param id the entity identifier
+     * @param candidate the candidate being processed
+     * @return the notification with its read timestamp populated
+     */
     @Transactional
     public NotificationResponseDTO markRead(Long id, User candidate) {
         requireCandidate(candidate);
@@ -103,10 +125,20 @@ public class NotificationService {
         return NotificationResponseDTO.from(notification);
     }
 
+    /**
+     * Requires the supplied user to have the candidate role before accessing notifications.
+     * @param user the user to validate
+     */
     private void requireCandidate(User user) {
         if (user == null || user.getRole() != Role.CANDIDATE) throw new AccessDeniedException("Candidate access is required");
     }
 
+    /**
+     * Truncates notification text to the persistence limit without modifying shorter values.
+     * @param value the value to validate or normalize
+     * @param maximumLength the maximum permitted output length
+     * @return the original value when within the limit, otherwise its maximum-length prefix
+     */
     private String limit(String value, int maximumLength) {
         return value.length() <= maximumLength ? value : value.substring(0, maximumLength);
     }
