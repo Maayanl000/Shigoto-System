@@ -316,11 +316,13 @@ public class ApplicationService {
     public HrApplicationDetailsDTO assignHomeTask(
             Long applicationId, String taskInstructions, LocalDateTime deadline, Long reviewerId,
             Long expectedVersion, User hr) {
+        // Resolve the company-owned application and reject stale or ineligible workflow state.
         Application application = findHrCompanyApplication(applicationId, hr);
         requireExpectedVersion(application, expectedVersion);
         if (application.getStatus() != ApplicationStatus.HR_INTERVIEW) {
             throw new IllegalArgumentException("Home task can only be sent after the HR interview stage");
         }
+        // Validate the assignment content, future deadline, and company-scoped reviewer.
         String normalizedInstructions = taskInstructions == null ? null : taskInstructions.trim();
         if (normalizedInstructions == null || normalizedInstructions.isEmpty()) {
             throw new IllegalArgumentException("Home task instructions are required");
@@ -339,6 +341,7 @@ public class ApplicationService {
         if (reviewer.getRole() != Role.INTERVIEWER) {
             throw new IllegalArgumentException("Selected reviewer is not an interviewer");
         }
+        // Reset prior submission data, advance the workflow, and notify after persistence.
         application.setTaskInstructions(normalizedInstructions);
         application.setTaskDeadline(deadline);
         application.setTaskRepoUrl(null);
@@ -420,6 +423,7 @@ public class ApplicationService {
     @Transactional
     public InterviewerSubmittedTaskDTO reviewSubmittedTask(
             Long applicationId, TaskReviewDecision decision, Long expectedVersion, User interviewer) {
+        // Validate the reviewer and resolve the assigned, company-scoped task at its expected version.
         requireInterviewerWithCompany(interviewer);
         if (decision == null) {
             throw new IllegalArgumentException("Task review decision is required");
@@ -431,6 +435,7 @@ public class ApplicationService {
         if (application.getStatus() != ApplicationStatus.TASK_SUBMITTED) {
             throw new IllegalArgumentException("Only a submitted task can be reviewed");
         }
+        // Derive the next workflow state from the decision and any active technical interview.
         boolean activeTechnicalInterview = decision == TaskReviewDecision.APPROVE
                 && interviewRepository.existsByApplicationIdAndTypeAndStatus(
                 applicationId, com.shigoto.backend.entity.InterviewType.TECHNICAL,
@@ -440,6 +445,7 @@ public class ApplicationService {
                 : activeTechnicalInterview
                         ? ApplicationStatus.TECH_INTERVIEW_SCHEDULED
                         : ApplicationStatus.TASK_APPROVED);
+        // Persist the decision and publish candidate-facing rejection only when applicable.
         InterviewerSubmittedTaskDTO result = InterviewerSubmittedTaskDTO.from(applicationRepository.saveAndFlush(application));
         if (decision == TaskReviewDecision.REJECT) publish(application, NotificationType.APPLICATION_REJECTED);
         return result;
@@ -753,9 +759,11 @@ public class ApplicationService {
      */
     private void requestGithubAnalysis(Application application) {
         User candidate = application.getCandidate();
+        // Build an analysis event only when the candidate has a valid GitHub profile username.
         GithubProfileUrlParser.extractUsername(candidate.getGithubProfileUrl()).ifPresent(username -> {
             GithubAnalysisRequestedEvent event = GithubAnalysisRequestedEvent.of(
                     candidate.getId(), application.getId(), username);
+            // Create or refresh pending analysis state before the transaction publishes the request.
             GithubData data = candidate.getGithubData();
             if (data == null) {
                 data = GithubData.builder().candidate(candidate).username(username)
@@ -773,6 +781,7 @@ public class ApplicationService {
                 data.setLastEventId(event.eventId());
                 githubDataRepository.save(data);
             }
+            // Defer the background request until the surrounding application transaction commits.
             githubAnalysisEventPublisher.publishAfterCommit(event);
         });
     }

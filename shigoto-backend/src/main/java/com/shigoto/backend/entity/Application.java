@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 )
 /**
  * Persists application state and its domain relationships.
+ * Lombok generates the no-argument constructor required by JPA and an all-fields constructor used by builder-backed construction.
  */
 @Data
 @NoArgsConstructor

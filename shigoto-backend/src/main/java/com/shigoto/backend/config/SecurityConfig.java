@@ -86,14 +86,17 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                // Configure cookie-backed CSRF protection while allowing login and registration bootstrap requests.
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                         .ignoringRequestMatchers("/api/auth/register", "/api/auth/login"))
                 .authorizeHttpRequests(auth -> auth
+                        // Permit preflight requests and endpoints required before authentication.
                         .requestMatchers(HttpMethod.OPTIONS, "/api/**").permitAll()
                         .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/csrf").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/users/register").permitAll()
+                        // Restrict staff operations according to the authenticated HR or interviewer role.
                         .requestMatchers(HttpMethod.GET, "/api/hr/jobs").hasRole("HR")
                         .requestMatchers(HttpMethod.POST, "/api/hr/jobs").hasRole("HR")
                         .requestMatchers(HttpMethod.PUT, "/api/hr/jobs/**").hasRole("HR")
@@ -111,6 +114,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/auth/logout").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/auth/me/profile").authenticated()
+                        // Protect company-scoped application operations with the HR role.
                         .requestMatchers(HttpMethod.GET,
                                 "/api/applications",
                                 "/api/applications/candidate/**").hasRole("HR")
@@ -119,6 +123,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/applications").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/interviews/mine").hasRole("CANDIDATE")
                         .requestMatchers("/api/notifications/**").hasRole("CANDIDATE")
+                        // Require authentication while services enforce ownership of candidate application resources.
                         .requestMatchers(HttpMethod.GET,
                                 "/api/applications/mine",
                                 "/api/applications/{applicationId}",
@@ -126,7 +131,9 @@ public class SecurityConfig {
                                 "/api/applications/{applicationId}/interviews").authenticated()
                         .requestMatchers(HttpMethod.PUT,
                                 "/api/applications/{applicationId}/task-submission").authenticated()
+                        // Reject every route that has not been explicitly authorized above.
                         .anyRequest().denyAll())
+                // Return HTTP authentication and access-denied statuses instead of browser login redirects.
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)));
         return http.build();

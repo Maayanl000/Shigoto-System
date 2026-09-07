@@ -436,9 +436,11 @@ public class InterviewService {
      */
     private void validateInterviewStage(Application application, InterviewType type) {
         ApplicationStatus status = application.getStatus();
+        // The HR interview opens the interview workflow and is valid only for a newly applied candidate.
         if (type == InterviewType.HR && status != ApplicationStatus.APPLIED) {
             throw new IllegalArgumentException("HR interview can only be scheduled for an applied application");
         }
+        // Technical interviews require HR progression and cannot bypass an assigned home-task prerequisite.
         if (type == InterviewType.TECHNICAL
                 && status != ApplicationStatus.HR_INTERVIEW
                 && status != ApplicationStatus.TASK_APPROVED) {
@@ -450,6 +452,7 @@ public class InterviewService {
             throw new IllegalArgumentException(
                     "Technical interview cannot be scheduled until the home task is approved");
         }
+        // Manager interviews are available only after the technical-interview stage has been reached.
         if (type == InterviewType.MANAGER && status != ApplicationStatus.TECH_INTERVIEW_SCHEDULED) {
             throw new IllegalArgumentException("Manager interview requires a scheduled technical interview stage");
         }

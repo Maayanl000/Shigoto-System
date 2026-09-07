@@ -35,6 +35,7 @@ public class CandidateEmailRenderer {
      */
     public RenderedEmail render(NotificationType type, User candidate, Application application,
                                 Interview interview) {
+        // Resolve event-specific, HTML-safe content fragments before assembling the shared layout.
         String jobTitle = escape(application.getJob().getTitle());
         String applicationUrl = applicationUrl(application.getId());
         EventContent content = eventContent(type, application, interview, jobTitle);
@@ -42,6 +43,7 @@ public class CandidateEmailRenderer {
                 ? "Hello," : "Hi " + escape(candidate.getFirstName().trim()) + ",";
         String viewApplication = applicationUrl == null ? "" : button(applicationUrl, "View application");
 
+        // Insert the prepared fragments into one branded template; helpers escape every dynamic text value.
         String html = """
                 <!doctype html><html><body style="margin:0;background:#f3f5f7;font-family:Arial,Helvetica,sans-serif;color:#10233d;">
                 <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="background:#f3f5f7;padding:24px 12px;"><tr><td align="center">
@@ -73,6 +75,7 @@ public class CandidateEmailRenderer {
     private EventContent eventContent(NotificationType type, Application application, Interview interview,
                                       String jobTitle) {
         return switch (type) {
+            // Application and home-task events derive their details directly from application state.
             case APPLICATION_SUBMITTED -> new EventContent("Application received", "Thank you for applying",
                     "We received your application for <strong>" + jobTitle + "</strong> at <strong>"
                             + companyName(application) + "</strong>.<br><br>"
@@ -85,12 +88,14 @@ public class CandidateEmailRenderer {
             case HOME_TASK_UPDATED -> new EventContent("Home task deadline updated", "Home task deadline updated",
                     "The home-task deadline for <strong>" + jobTitle + "</strong> has changed.",
                     details(row("Updated deadline", format(application.getTaskDeadline()))), "");
+            // Interview events share scheduling details and expose a join action only while it is appropriate.
             case INTERVIEW_SCHEDULED -> interviewContent("Interview scheduled", "Your interview for <strong>"
                     + jobTitle + "</strong> has been scheduled.", interview, true);
             case INTERVIEW_RESCHEDULED -> interviewContent("Interview rescheduled", "Your interview for <strong>"
                     + jobTitle + "</strong> has been rescheduled.", interview, true);
             case INTERVIEW_CANCELED -> interviewContent("Interview canceled", "Your interview for <strong>"
                     + jobTitle + "</strong> has been canceled.", interview, false);
+            // Terminal application outcomes use status-specific copy, with rejection feedback handled separately.
             case APPLICATION_OFFERED -> new EventContent("Great news - offer update", "Offer update",
                     "The company would like to move forward with an offer for <strong>" + jobTitle + "</strong>.",
                     "", "");

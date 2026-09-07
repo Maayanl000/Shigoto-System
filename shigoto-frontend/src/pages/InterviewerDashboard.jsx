@@ -29,8 +29,16 @@ function EmptyState({ children }) {
 /**
  * Renders the interview item interface and coordinates its user interactions.
  */
-function InterviewItem({ interview, onFeedback, onNotes }) {
+function InterviewItem({ interview, onFeedback, onNotes, statusReferenceTime = null }) {
   const upcoming = interview.status === 'SCHEDULED';
+  const scheduledAt = interview.scheduledAt ? new Date(interview.scheduledAt) : null;
+  const statusLabel = upcoming
+    && statusReferenceTime !== null
+    && scheduledAt
+    && !Number.isNaN(scheduledAt.getTime())
+    && scheduledAt.getTime() <= statusReferenceTime
+    ? 'Awaiting feedback'
+    : interview.status;
   return (
     <Box sx={{ p: 2, border: 1, borderColor: 'divider', borderLeft: upcoming ? 4 : 1, borderLeftColor: upcoming ? 'success.main' : 'divider', borderRadius: 1.5 }}>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2}>
@@ -43,7 +51,7 @@ function InterviewItem({ interview, onFeedback, onNotes }) {
             <Typography variant="body2">{formatDateTime(interview.scheduledAt)}</Typography>
           </Stack>
         </Box>
-        <Chip label={interview.status} color={upcoming ? 'success' : interview.status === 'CANCELED' ? 'default' : 'secondary'} variant={upcoming ? 'filled' : 'outlined'} />
+        <Chip label={statusLabel} color={upcoming ? 'success' : interview.status === 'CANCELED' ? 'default' : 'secondary'} variant={upcoming ? 'filled' : 'outlined'} />
       </Stack>
       {interview.status === 'COMPLETED' && interview.feedback && (
         <Box sx={{ mt: 2, p: 1.5, bgcolor: 'action.hover', borderRadius: 1.5 }}>
@@ -69,6 +77,7 @@ function InterviewItem({ interview, onFeedback, onNotes }) {
 export default function InterviewerDashboard() {
   const [dashboardMode, setDashboardMode] = useState('active');
   const [interviews, setInterviews] = useState([]);
+  const [interviewsLoadedAt, setInterviewsLoadedAt] = useState(null);
   const [interviewsLoading, setInterviewsLoading] = useState(true);
   const [interviewsError, setInterviewsError] = useState('');
   const [tasks, setTasks] = useState([]);
@@ -99,6 +108,7 @@ export default function InterviewerDashboard() {
       const response = await api.get('/interviewer/interviews');
       const records = Array.isArray(response.data) ? response.data : [];
       setInterviews(records);
+      setInterviewsLoadedAt(Date.now());
       return records;
     } catch (requestError) {
       setInterviewsError(requestError.response?.data?.message || 'Could not load assigned interviews.');
@@ -128,7 +138,11 @@ export default function InterviewerDashboard() {
   useEffect(() => {
     let active = true;
     api.get('/interviewer/interviews')
-      .then((response) => { if (active) setInterviews(Array.isArray(response.data) ? response.data : []); })
+      .then((response) => {
+        if (!active) return;
+        setInterviews(Array.isArray(response.data) ? response.data : []);
+        setInterviewsLoadedAt(Date.now());
+      })
       .catch((requestError) => { if (active) setInterviewsError(requestError.response?.data?.message || 'Could not load assigned interviews.'); })
       .finally(() => { if (active) setInterviewsLoading(false); });
     api.get('/interviewer/tasks')
@@ -283,7 +297,7 @@ export default function InterviewerDashboard() {
             {interviewsLoading ? <Box sx={{ py: 4, display: 'grid', placeItems: 'center' }}><CircularProgress size={26} /></Box>
               : interviewsError ? <Alert severity="error" sx={{ mt: 2 }} action={<Button color="inherit" size="small" onClick={loadInterviews}>Retry</Button>}>{interviewsError}</Alert>
                 : upcomingInterviews.length === 0 ? <EmptyState>No assigned interviews are currently scheduled.</EmptyState>
-                  : <Stack spacing={1.5} sx={{ mt: 2 }}>{upcomingInterviews.map((item) => <InterviewItem key={item.interviewId} interview={item} onFeedback={openFeedback} onNotes={openNotes} />)}</Stack>}
+                  : <Stack spacing={1.5} sx={{ mt: 2 }}>{upcomingInterviews.map((item) => <InterviewItem key={item.interviewId} interview={item} onFeedback={openFeedback} onNotes={openNotes} statusReferenceTime={interviewsLoadedAt} />)}</Stack>}
           </CardContent></Card>
         </Grid>
 

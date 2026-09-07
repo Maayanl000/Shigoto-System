@@ -12,6 +12,7 @@ export default function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
 
+  // Restore authenticated user state from the existing server session when the provider mounts.
   useEffect(() => {
     let active = true;
 
@@ -31,15 +32,18 @@ export default function AuthProvider({ children }) {
     };
   }, []);
 
+  // Expose the current authentication state and operations through one stable context value.
   const value = useMemo(() => ({
     user,
     loading,
     loggingOut,
+    /** Authenticates the supplied credentials and stores the returned user in local state. */
     login: async (credentials) => {
       const response = await api.post('/auth/login', credentials);
       setUser(response.data);
       return response.data;
     },
+    /** Registers a candidate, starts their session, and stores the authenticated user. */
     register: async (details) => {
       await api.post('/auth/register', details);
       const response = await api.post('/auth/login', {
@@ -49,6 +53,7 @@ export default function AuthProvider({ children }) {
       setUser(response.data);
       return response.data;
     },
+    /** Updates the candidate profile and synchronizes the local authenticated user. */
     updateProfile: async (profile) => {
       try {
         const response = await api.put('/auth/me/profile', profile);
@@ -59,11 +64,14 @@ export default function AuthProvider({ children }) {
         throw error;
       }
     },
+    /** Ends the authenticated session while keeping local navigation and auth state consistent. */
     logout: async () => {
       setLoggingOut(true);
+      // Leave protected UI and clear local authentication before requesting server-side logout.
       navigate('/', { replace: true, flushSync: true });
       setUser(null);
       try {
+        // End the server session; local cleanup remains authoritative if it already expired.
         await api.post('/auth/logout');
       } catch {
         // Local auth state must still clear if the session already expired.
